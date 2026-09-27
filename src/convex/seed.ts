@@ -1,6 +1,6 @@
-import { v } from "convex/values";
-import { internalAction } from "./_generated/server";
+import { action } from "./_generated/server";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 
 /**
  * SEED DE DEMONSTRAÇÃO — conteúdo claramente identificado como demo.
@@ -14,16 +14,23 @@ import { internal } from "./_generated/api";
 
 const DEMO_MARKER = "[DEMO]";
 
-export const runDemoSeed = internalAction({
+export const runDemoSeed = action({
   args: {},
-  handler: async (ctx) => {
+  handler: async (ctx): Promise<{
+    seeded: boolean;
+    reason?: string;
+    examId?: Id<"exams">;
+    editionId?: Id<"examEditions">;
+    questionsCreated?: number;
+    subjectsCreated?: number;
+  }> => {
     // 1. Exame ENEM
     const examCheck = await ctx.runQuery(internal.seedHelpers.getExamBySlug, { slug: "enem" });
     if (examCheck) {
       return { seeded: false, reason: "ENEM já existe" };
     }
 
-    const examId = await ctx.runMutation(internal.seedHelpers.createExam, {
+    const examId: Id<"exams"> = await ctx.runMutation(internal.seedHelpers.createExam, {
       name: `${DEMO_MARKER} ENEM`,
       slug: "enem",
       type: "enem",
@@ -34,7 +41,7 @@ export const runDemoSeed = internalAction({
     });
 
     // 2. Edição 2024 · 1º dia
-    const editionId = await ctx.runMutation(internal.seedHelpers.createEdition, {
+    const editionId: Id<"examEditions"> = await ctx.runMutation(internal.seedHelpers.createEdition, {
       examId,
       year: 2024,
       phase: "1º dia",
@@ -53,24 +60,25 @@ export const runDemoSeed = internalAction({
       { areaName: "Natureza", subjectName: "Química", slug: "quimica" },
     ];
 
-    const created: { subjectId: string; slug: string }[] = [];
+    const created: { subjectId: Id<"taxonomyNodes">; slug: string }[] = [];
     let areaOrder = 0;
     let subjectOrder = 0;
-    const areaIds = new Map<string, string>();
+    const areaIds = new Map<string, Id<"taxonomyNodes">>();
 
     for (const s of subjects) {
-      let areaId = areaIds.get(s.areaName);
-      if (!areaId) {
-        areaId = await ctx.runMutation(internal.seedHelpers.createTaxonomyNode, {
+      const existingAreaId = areaIds.get(s.areaName);
+      const areaId: Id<"taxonomyNodes"> =
+        existingAreaId ??
+        (await ctx.runMutation(internal.seedHelpers.createTaxonomyNode, {
           level: "area" as const,
           name: s.areaName,
           slug: s.areaName.toLowerCase(),
           parentId: undefined,
           order: areaOrder++,
-        });
-        areaIds.set(s.areaName, areaId);
-      }
-      const subjectId = await ctx.runMutation(internal.seedHelpers.createTaxonomyNode, {
+        }));
+      areaIds.set(s.areaName, areaId);
+
+      const subjectId: Id<"taxonomyNodes"> = await ctx.runMutation(internal.seedHelpers.createTaxonomyNode, {
         level: "subject" as const,
         name: s.subjectName,
         slug: s.slug,

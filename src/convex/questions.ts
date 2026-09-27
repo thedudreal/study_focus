@@ -1,6 +1,7 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { query, mutation } from "./_generated/server";
-import type { GenericMutationCtx, GenericQueryCtx } from "./_generated/server";
+import type { GenericMutationCtx, GenericQueryCtx } from "convex/server";
+import type { DataModel } from "./_generated/dataModel";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 
@@ -10,11 +11,16 @@ import type { Id } from "./_generated/dataModel";
  * são expostas. Mutations administrativas exigem role "admin".
  */
 
-async function requireAdmin(ctx: GenericMutationCtx<any> | GenericQueryCtx<any>): Promise<void> {
+async function requireAdmin(
+  ctx: GenericMutationCtx<DataModel> | GenericQueryCtx<DataModel>,
+): Promise<void> {
   const userId = await getAuthUserId(ctx as never);
   if (userId === null) throw new Error("Não autenticado");
   const user = await ctx.db.get(userId);
-  if (user?.role !== "") {
+  if (user?.role !== "admin") {
+    throw new Error("Acesso restrito a administradores");
+  }
+}
 
 /** Resultado enriquecido de questão com nomes de taxonomia e vídeo. */
 export const questionViewValidator = v.object({

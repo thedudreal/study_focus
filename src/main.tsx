@@ -1,6 +1,7 @@
 import '@vly-ai/integrations';
 import { Toaster } from "@/components/ui/sonner";
 import { RequireAuth } from "@/components/RequireAuth";
+import { AppShell } from "@/components/AppShell";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
@@ -13,13 +14,23 @@ import "./index.css";
 const Landing = lazy(() => import("./pages/Landing.tsx"));
 const AuthPage = lazy(() => import("./pages/Auth.tsx"));
 const Dashboard = lazy(() => import("./pages/Dashboard.tsx"));
+const Today = lazy(() => import("./pages/Today.tsx"));
+const Ranking = lazy(() => import("./pages/Ranking.tsx"));
+const Profile = lazy(() => import("./pages/Profile.tsx"));
+const Questions = lazy(() => import("./pages/Questions.tsx"));
+const ExamDetail = lazy(() => import("./pages/ExamDetail.tsx"));
+const CreateSession = lazy(() => import("./pages/CreateSession.tsx"));
+const SessionPlayer = lazy(() => import("./pages/SessionPlayer.tsx"));
+const Results = lazy(() => import("./pages/Results.tsx"));
+const Favorites = lazy(() => import("./pages/Favorites.tsx"));
+const Errors = lazy(() => import("./pages/Errors.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 // Simple loading fallback for route transitions
 function RouteLoading() {
   return (
     <div className="min-h-screen flex items-center justify-center">
-      <div className="animate-pulse text-muted-foreground">Loading...</div>
+      <div className="animate-pulse text-muted-foreground font-mono-tech text-sm">carregando…</div>
     </div>
   );
 }
@@ -82,8 +93,6 @@ class RootErrorBoundary extends React.Component<
 
 const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
 
-
-
 function RouteSyncer() {
   const location = useLocation();
   useEffect(() => {
@@ -107,6 +116,14 @@ function RouteSyncer() {
   return null;
 }
 
+/** Wrapper: rota autenticada dentro do shell StudyFocus */
+function Protected({ children }: { children: React.ReactNode }) {
+  return (
+    <RequireAuth redirectImmediately>
+      <AppShell>{children}</AppShell>
+    </RequireAuth>
+  );
+}
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -122,16 +139,21 @@ createRoot(document.getElementById("root")!).render(
               <Route path="/" element={<Landing />} />
               <Route
                 path="/auth"
-                element={<AuthPage redirectAfterAuth="/dashboard" />}
+                element={<AuthPage redirectAfterAuth="/app" />}
               />
-              <Route
-                path="/dashboard"
-                element={
-                  <RequireAuth>
-                    <Dashboard />
-                  </RequireAuth>
-                }
-              />
+              <Route path="/app" element={<Protected><Dashboard /></Protected>} />
+              <Route path="/app/questions" element={<Protected><Questions /></Protected>} />
+              <Route path="/app/questions/create" element={<Protected><CreateSession /></Protected>} />
+              <Route path="/app/questions/search" element={<Protected><Questions /></Protected>} />
+              <Route path="/app/questions/errors" element={<Protected><Errors /></Protected>} />
+              <Route path="/app/questions/favorites" element={<Protected><Favorites /></Protected>} />
+              <Route path="/app/exams/:examId" element={<Protected><ExamDetail /></Protected>} />
+              <Route path="/app/session/:sessionId" element={<Protected><SessionPlayer /></Protected>} />
+              <Route path="/app/results/:sessionId" element={<Protected><Results /></Protected>} />
+              <Route path="/app/today" element={<Protected><Today /></Protected>} />
+              <Route path="/app/ranking" element={<Protected><Ranking /></Protected>} />
+              <Route path="/app/profile" element={<Protected><Profile /></Protected>} />
+              <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>

@@ -1,8 +1,8 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { query, mutation } from "./_generated/server";
-import type { GenericMutationCtx } from "./_generated/server";
+import type { GenericMutationCtx } from "convex/server";
 import { v } from "convex/values";
-import type { Id, Doc } from "./_generated/dataModel";
+import type { Id, Doc, DataModel } from "./_generated/dataModel";
 import {
   pickQuestions,
   pickDailyWarmup,
@@ -17,7 +17,7 @@ import {
 
 const MAX_PER_SESSION = 90;
 
-async function requireUser(ctx: GenericMutationCtx<any>): Promise<Id<"users">> {
+async function requireUser(ctx: GenericMutationCtx<DataModel>): Promise<Id<"users">> {
   const userId = await getAuthUserId(ctx);
   if (userId === null) throw new Error("Não autenticado");
   return userId;
@@ -237,7 +237,7 @@ export const answerQuestion = mutation({
 
 /** Persiste tentativa + favoritos/erros + stats. Chamado pelo answer e pelo finish. */
 export async function persistAttempt(
-  ctx: GenericMutationCtx<any>,
+  ctx: GenericMutationCtx<DataModel>,
   userId: Id<"users">,
   sessionId: Id<"studySessions">,
   question: Doc<"questions">,

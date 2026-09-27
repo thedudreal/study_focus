@@ -1,5 +1,6 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { query } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 
 /**
  * QUESTÕES DO DIA + RANKING
@@ -35,8 +36,8 @@ export const getWeeklyRanking = query({
     const weekAgo = Date.now() - 7 * 86_400_000;
 
     const attempts = await ctx.db.query("questionAttempts").collect();
-    const xpByUser = new Map<string, number>();
-    const answeredByUser = new Map<string, number>();
+    const xpByUser = new Map<Id<"users">, number>();
+    const answeredByUser = new Map<Id<"users">, number>();
     for (const a of attempts) {
       if (a.answeredAt < weekAgo) continue;
       xpByUser.set(a.userId, (xpByUser.get(a.userId) ?? 0) + (a.isCorrect ? 10 : 0));

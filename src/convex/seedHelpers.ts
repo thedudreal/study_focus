@@ -1,9 +1,9 @@
-import { internalMutation } from "./_generated/server";
+import { internalMutation, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
 
-/** Mutations internas usadas apenas pelo seed de demonstração. */
+/** Queries e mutations internas usadas apenas pelo seed de demonstração. */
 
-export const getExamBySlug = internalMutation({
+export const getExamBySlug = internalQuery({
   args: { slug: v.string() },
   handler: async (ctx, { slug }) => {
     return await ctx.db

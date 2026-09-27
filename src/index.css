@@ -41,94 +41,97 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
   --font-sans: var(--font-sans);
-  --font-serif: var(--font-serif);
   --font-mono: var(--font-mono);
 }
 
 /* ============================================================
-   PAPERY THEME — papel #F0EEE6, tinta editorial, linhas finas
-   Inspirado em jornais e layouts editoriais: hierarquia serifada,
-   muito respiro, acentos quietos como tinta.
+   STUDYFOCUS — dark-first, minimal, bold accents, technical
    ============================================================ */
 :root {
-  --radius: 0.125rem;
+  --radius: 0.5rem;
 
-  --background: #f0eee6;
-  --foreground: #1a1917;
-  --card: #f7f5ee;
-  --card-foreground: #1a1917;
-  --popover: #f7f5ee;
-  --popover-foreground: #1a1917;
-  --primary: #1a1917;
-  --primary-foreground: #f0eee6;
-  --secondary: #e9e6dc;
-  --secondary-foreground: #1a1917;
-  --muted: #e9e6dc;
-  --muted-foreground: #6e6a5e;
-  --accent: #e9e6dc;
-  --accent-foreground: #1a1917;
-  --destructive: #a4372b;
-  --border: #d8d4c6;
-  --input: #c9c4b4;
-  --ring: #1a1917;
-  --chart-1: #1a1917;
-  --chart-2: #a4372b;
-  --chart-3: #6e6a5e;
-  --chart-4: #b98a2f;
-  --chart-5: #4a7268;
-  --sidebar: #eae7dd;
-  --sidebar-foreground: #1a1917;
-  --sidebar-primary: #1a1917;
-  --sidebar-primary-foreground: #f0eee6;
-  --sidebar-accent: #e9e6dc;
-  --sidebar-accent-foreground: #1a1917;
-  --sidebar-border: #d8d4c6;
-  --sidebar-ring: #1a1917;
+  --background: #0a0c10;
+  --foreground: #e6eaf2;
+  --card: #10131a;
+  --card-foreground: #e6eaf2;
+  --popover: #10131a;
+  --popover-foreground: #e6eaf2;
+  --primary: #7c5cff;
+  --primary-foreground: #ffffff;
+  --secondary: #171b24;
+  --secondary-foreground: #e6eaf2;
+  --muted: #171b24;
+  --muted-foreground: #8b93a7;
+  --accent: #1c2230;
+  --accent-foreground: #e6eaf2;
+  --destructive: #ff5d5d;
+  --border: #232836;
+  --input: #2a3040;
+  --ring: #7c5cff;
+  --chart-1: #7c5cff;
+  --chart-2: #22d3ee;
+  --chart-3: #a3e635;
+  --chart-4: #fbbf24;
+  --chart-5: #f472b6;
+  --sidebar: #0d0f14;
+  --sidebar-foreground: #e6eaf2;
+  --sidebar-primary: #7c5cff;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #171b24;
+  --sidebar-accent-foreground: #e6eaf2;
+  --sidebar-border: #232836;
+  --sidebar-ring: #7c5cff;
 
-  /* Hierarquia serifada à frente; sans para interface */
-  --font-serif: "Source Serif 4", "Source Serif Pro", Georgia, "Times New Roman", serif;
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+
+  --sf-cyan: #22d3ee;
+  --sf-lime: #a3e635;
+  --sf-violet: #7c5cff;
+  --sf-amber: #fbbf24;
 }
 
-/* Dark mode: tinta invertida (reservado; v1 opera em claro) */
+/* A UI é dark-first; .dark espelha o root para compatibilidade */
 .dark {
-  --background: #171613;
-  --foreground: #edeae0;
-  --card: #1e1c18;
-  --card-foreground: #edeae0;
-  --popover: #1e1c18;
-  --popover-foreground: #edeae0;
-  --primary: #edeae0;
-  --primary-foreground: #171613;
-  --secondary: #26241f;
-  --secondary-foreground: #edeae0;
-  --muted: #26241f;
-  --muted-foreground: #a39e8f;
-  --accent: #26241f;
-  --accent-foreground: #edeae0;
-  --destructive: #c4574a;
-  --border: #35322a;
-  --input: #454136;
-  --ring: #edeae0;
-  --chart-1: #edeae0;
-  --chart-2: #c4574a;
-  --chart-3: #a39e8f;
-  --chart-4: #cba451;
-  --chart-5: #6f968a;
-  --sidebar: #1e1c18;
-  --sidebar-foreground: #edeae0;
-  --sidebar-primary: #edeae0;
-  --sidebar-primary-foreground: #171613;
-  --sidebar-accent: #26241f;
-  --sidebar-accent-foreground: #edeae0;
-  --sidebar-border: #35322a;
-  --sidebar-ring: #edeae0;
+  --background: #0a0c10;
+  --foreground: #e6eaf2;
+  --card: #10131a;
+  --card-foreground: #e6eaf2;
+  --popover: #10131a;
+  --popover-foreground: #e6eaf2;
+  --primary: #7c5cff;
+  --primary-foreground: #ffffff;
+  --secondary: #171b24;
+  --secondary-foreground: #e6eaf2;
+  --muted: #171b24;
+  --muted-foreground: #8b93a7;
+  --accent: #1c2230;
+  --accent-foreground: #e6eaf2;
+  --destructive: #ff5d5d;
+  --border: #232836;
+  --input: #2a3040;
+  --ring: #7c5cff;
+  --chart-1: #7c5cff;
+  --chart-2: #22d3ee;
+  --chart-3: #a3e635;
+  --chart-4: #fbbf24;
+  --chart-5: #f472b6;
+  --sidebar: #0d0f14;
+  --sidebar-foreground: #e6eaf2;
+  --sidebar-primary: #7c5cff;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #171b24;
+  --sidebar-accent-foreground: #e6eaf2;
+  --sidebar-border: #232836;
+  --sidebar-ring: #7c5cff;
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
+  }
+  html {
+    color-scheme: dark;
   }
   body {
     @apply bg-background text-foreground;
@@ -139,48 +142,65 @@
   [role="button"]:not([disabled]) {
     cursor: pointer;
   }
-  /* Textura sutil de papel */
+  /* Grid técnico sutil no fundo */
   body::before {
     content: "";
     position: fixed;
     inset: 0;
     pointer-events: none;
     z-index: 0;
-    opacity: 0.35;
-    background-image: radial-gradient(#d8d4c6 0.65px, transparent 0.65px);
-    background-size: 22px 22px;
+    opacity: 0.5;
+    background-image:
+      linear-gradient(to right, rgb(124 92 255 / 0.04) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(124 92 255 / 0.04) 1px, transparent 1px);
+    background-size: 48px 48px;
   }
   ::selection {
-    background: #1a1917;
-    color: #f0eee6;
+    background: #7c5cff;
+    color: #ffffff;
   }
 }
 
 @layer utilities {
-  /* Serifa editorial para títulos e números de destaque */
-  .font-editorial {
-    font-family: var(--font-serif);
-    letter-spacing: -0.01em;
-  }
-  /* Filete fino de jornal */
-  .rule-thin {
-    border-bottom: 1px solid var(--border);
-  }
-  .rule-double {
-    border-bottom: 1px solid var(--border);
-    box-shadow: 0 3px 0 -2px var(--border);
-  }
-  /* Cartão de papel */
-  .paper-card {
-    background: var(--card);
-    border: 1px solid var(--border);
-  }
-  /* Rótulo em caixa alta, estilo editorial */
+  /* Rótulo técnico em mono, caixa alta */
   .eyebrow {
+    font-family: var(--font-mono);
     font-size: 0.6875rem;
-    letter-spacing: 0.14em;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
     font-weight: 600;
+  }
+  /* Números e métricas em mono */
+  .font-mono-tech {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+  /* Painel base */
+  .panel {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+  /* Brilho suave dos acentos */
+  .glow-primary {
+    box-shadow: 0 0 0 1px rgb(124 92 255 / 0.35), 0 8px 32px -12px rgb(124 92 255 / 0.45);
+  }
+  .glow-cyan {
+    box-shadow: 0 0 0 1px rgb(34 211 238 / 0.3), 0 8px 32px -12px rgb(34 211 238 / 0.4);
+  }
+  /* Chips de status em mono */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border: 1px solid var(--border);
+    border-radius: 9999px;
+    padding: 0.125rem 0.625rem;
+    color: var(--muted-foreground);
   }
   .text-balance {
     text-wrap: balance;
