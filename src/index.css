@@ -1,0 +1,188 @@
+/* DO NOT CHANGE */
+@import "tailwindcss";
+@import "tw-animate-css";
+@custom-variant dark (&:is(.dark *));
+
+/* DO NOT CHANGE */
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --font-sans: var(--font-sans);
+  --font-serif: var(--font-serif);
+  --font-mono: var(--font-mono);
+}
+
+/* ============================================================
+   PAPERY THEME — papel #F0EEE6, tinta editorial, linhas finas
+   Inspirado em jornais e layouts editoriais: hierarquia serifada,
+   muito respiro, acentos quietos como tinta.
+   ============================================================ */
+:root {
+  --radius: 0.125rem;
+
+  --background: #f0eee6;
+  --foreground: #1a1917;
+  --card: #f7f5ee;
+  --card-foreground: #1a1917;
+  --popover: #f7f5ee;
+  --popover-foreground: #1a1917;
+  --primary: #1a1917;
+  --primary-foreground: #f0eee6;
+  --secondary: #e9e6dc;
+  --secondary-foreground: #1a1917;
+  --muted: #e9e6dc;
+  --muted-foreground: #6e6a5e;
+  --accent: #e9e6dc;
+  --accent-foreground: #1a1917;
+  --destructive: #a4372b;
+  --border: #d8d4c6;
+  --input: #c9c4b4;
+  --ring: #1a1917;
+  --chart-1: #1a1917;
+  --chart-2: #a4372b;
+  --chart-3: #6e6a5e;
+  --chart-4: #b98a2f;
+  --chart-5: #4a7268;
+  --sidebar: #eae7dd;
+  --sidebar-foreground: #1a1917;
+  --sidebar-primary: #1a1917;
+  --sidebar-primary-foreground: #f0eee6;
+  --sidebar-accent: #e9e6dc;
+  --sidebar-accent-foreground: #1a1917;
+  --sidebar-border: #d8d4c6;
+  --sidebar-ring: #1a1917;
+
+  /* Hierarquia serifada à frente; sans para interface */
+  --font-serif: "Source Serif 4", "Source Serif Pro", Georgia, "Times New Roman", serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+}
+
+/* Dark mode: tinta invertida (reservado; v1 opera em claro) */
+.dark {
+  --background: #171613;
+  --foreground: #edeae0;
+  --card: #1e1c18;
+  --card-foreground: #edeae0;
+  --popover: #1e1c18;
+  --popover-foreground: #edeae0;
+  --primary: #edeae0;
+  --primary-foreground: #171613;
+  --secondary: #26241f;
+  --secondary-foreground: #edeae0;
+  --muted: #26241f;
+  --muted-foreground: #a39e8f;
+  --accent: #26241f;
+  --accent-foreground: #edeae0;
+  --destructive: #c4574a;
+  --border: #35322a;
+  --input: #454136;
+  --ring: #edeae0;
+  --chart-1: #edeae0;
+  --chart-2: #c4574a;
+  --chart-3: #a39e8f;
+  --chart-4: #cba451;
+  --chart-5: #6f968a;
+  --sidebar: #1e1c18;
+  --sidebar-foreground: #edeae0;
+  --sidebar-primary: #edeae0;
+  --sidebar-primary-foreground: #171613;
+  --sidebar-accent: #26241f;
+  --sidebar-accent-foreground: #edeae0;
+  --sidebar-border: #35322a;
+  --sidebar-ring: #edeae0;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  button:not([disabled]),
+  [role="button"]:not([disabled]) {
+    cursor: pointer;
+  }
+  /* Textura sutil de papel */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.35;
+    background-image: radial-gradient(#d8d4c6 0.65px, transparent 0.65px);
+    background-size: 22px 22px;
+  }
+  ::selection {
+    background: #1a1917;
+    color: #f0eee6;
+  }
+}
+
+@layer utilities {
+  /* Serifa editorial para títulos e números de destaque */
+  .font-editorial {
+    font-family: var(--font-serif);
+    letter-spacing: -0.01em;
+  }
+  /* Filete fino de jornal */
+  .rule-thin {
+    border-bottom: 1px solid var(--border);
+  }
+  .rule-double {
+    border-bottom: 1px solid var(--border);
+    box-shadow: 0 3px 0 -2px var(--border);
+  }
+  /* Cartão de papel */
+  .paper-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+  }
+  /* Rótulo em caixa alta, estilo editorial */
+  .eyebrow {
+    font-size: 0.6875rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+  .text-balance {
+    text-wrap: balance;
+  }
+}
