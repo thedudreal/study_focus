@@ -24,6 +24,10 @@ const SessionPlayer = lazy(() => import("./pages/SessionPlayer.tsx"));
 const Results = lazy(() => import("./pages/Results.tsx"));
 const Favorites = lazy(() => import("./pages/Favorites.tsx"));
 const Errors = lazy(() => import("./pages/Errors.tsx"));
+const AdminLayout = lazy(() => import("./pages/admin/AdminLayout.tsx"));
+const AdminQuestions = lazy(() => import("./pages/admin/AdminQuestions.tsx"));
+const AdminQuestionForm = lazy(() => import("./pages/admin/AdminQuestionForm.tsx"));
+const AdminImport = lazy(() => import("./pages/admin/AdminImport.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 // Simple loading fallback for route transitions
@@ -153,6 +157,46 @@ createRoot(document.getElementById("root")!).render(
               <Route path="/app/today" element={<Protected><Today /></Protected>} />
               <Route path="/app/ranking" element={<Protected><Ranking /></Protected>} />
               <Route path="/app/profile" element={<Protected><Profile /></Protected>} />
+              <Route
+                path="/app/admin"
+                element={
+                  <Protected>
+                    <AdminLayout>
+                      <AdminQuestions />
+                    </AdminLayout>
+                  </Protected>
+                }
+              />
+              <Route
+                path="/app/admin/import"
+                element={
+                  <Protected>
+                    <AdminLayout>
+                      <AdminImport />
+                    </AdminLayout>
+                  </Protected>
+                }
+              />
+              <Route
+                path="/app/admin/questions/new"
+                element={
+                  <Protected>
+                    <AdminLayout>
+                      <AdminQuestionForm />
+                    </AdminLayout>
+                  </Protected>
+                }
+              />
+              <Route
+                path="/app/admin/questions/:questionId"
+                element={
+                  <Protected>
+                    <AdminLayout>
+                      <AdminQuestionForm />
+                    </AdminLayout>
+                  </Protected>
+                }
+              />
               <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
               <Route path="*" element={<NotFound />} />
             </Routes>

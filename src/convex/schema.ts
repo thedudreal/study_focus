@@ -36,7 +36,7 @@ export const taxonomyNodes = defineTable({
 }).index("by_parent", ["level", "parentId"]);
 
 // ============================================================
-// DOMÍNIO: EXAMES (instituições, provas, edições e fases)
+// DOMÍNIO: EXAMES (Instituição → Prova → Ano → Fase)
 // ============================================================
 
 export const exams = defineTable({
@@ -61,6 +61,29 @@ export const examEditions = defineTable({
   label: v.optional(v.string()),
   questionCount: v.optional(v.number()),
 }).index("by_exam_year", ["examId", "year"]);
+
+/** Instituições (USP, INEP, UNICAMP...) — provedor das provas */
+export const institutions = defineTable({
+  name: v.string(),
+  slug: v.string(),
+  description: v.optional(v.string()),
+}).index("by_slug", ["slug"]);
+
+/** Fontes de conteúdo com rastreio de licença/permissão */
+export const sources = defineTable({
+  name: v.string(),
+  organization: v.optional(v.string()),
+  url: v.optional(v.string()),
+  licenseOrPermission: v.optional(v.string()),
+  verificationStatus: v.union(
+    v.literal("unverified"),
+    v.literal("pending"),
+    v.literal("verified"),
+    v.literal("rejected"),
+  ),
+  verifiedAt: v.optional(v.number()),
+  notes: v.optional(v.string()),
+}).index("by_verification", ["verificationStatus"]);
 
 // ============================================================
 // DOMÍNIO: QUESTÕES
@@ -91,12 +114,21 @@ export const questions = defineTable({
     v.literal("medium"),
     v.literal("hard"),
   ),
+  /** Tipo de questão (múltipla escolha hoje; futuro: dissertativa etc.) */
+  questionType: v.optional(v.union(v.literal("multiple_choice"))),
+  /** Identificador externo de origem (dedupe com fontes externas) */
+  sourceId: v.optional(v.string()),
+  /** Fonte documentada (quando aplicável) */
+  sourceDbId: v.optional(v.id("sources")),
+  imageUrl: v.optional(v.string()),
   status: v.union(
     v.literal("draft"),
     v.literal("review"),
     v.literal("published"),
     v.literal("archived"),
   ),
+  /** Lote de importação que originou a questão (rastreabilidade) */
+  importBatchId: v.optional(v.id("importBatches")),
   /** Hash para detecção de duplicatas (fase futura: similaridade) */
   contentHash: v.optional(v.string()),
   videoId: v.optional(v.id("videos")),
@@ -104,10 +136,48 @@ export const questions = defineTable({
   .index("by_exam", ["examId", "status"])
   .index("by_edition", ["editionId", "sourceOrder"])
   .index("by_subject", ["subjectId", "status"])
+  .index("by_batch", ["importBatchId"])
+  .index("by_source_id", ["sourceId"])
   .searchIndex("search_statement", {
     searchField: "statement",
     filterFields: ["status"],
   });
+
+/**
+ * Alternativas normalizadas (tabela própria).
+ * A questions.alternatives embutida é mantida para leitura rápida;
+ * a tabela autoritativa para validação e edição fina é esta.
+ */
+export const questionOptions = defineTable({
+  questionId: v.id("questions"),
+  label: v.string(), // "A".."E"
+  text: v.string(),
+  isCorrect: v.boolean(),
+  order: v.number(),
+}).index("by_question_order", ["questionId", "order"]);
+
+/** Lote de importação CSV (rastreabilidade e auditoria) */
+export const importBatches = defineTable({
+  filename: v.string(),
+  totalRows: v.number(),
+  validRows: v.number(),
+  errorRows: v.number(),
+  importedCount: v.number(),
+  status: v.union(
+    v.literal("validating"),
+    v.literal("ready"),
+    v.literal("importing"),
+    v.literal("imported"),
+    v.literal("failed"),
+    v.literal("cancelled"),
+  ),
+  errors: v.optional(v.array(v.object({
+    row: v.number(),
+    errors: v.array(v.string()),
+  }))),
+  createdAt: v.number(),
+  createdBy: v.id("users"),
+}).index("by_status", ["status"]);
 
 export const videos = defineTable({
   title: v.string(),
@@ -258,7 +328,11 @@ const schema = defineSchema(
     taxonomyNodes,
     exams,
     examEditions,
+    institutions,
+    sources,
     questions,
+    questionOptions,
+    importBatches,
     videos,
     studySessions,
     questionAttempts,

@@ -45,7 +45,7 @@ export const runDemoSeed = action({
       examId,
       year: 2024,
       phase: "1º dia",
-      questionCount: 24,
+      questionCount: 50,
     });
 
     // 3. Taxonomia: Áreas → Matérias
@@ -465,7 +465,132 @@ export const runDemoSeed = action({
         examId,
         editionId,
         difficulty: q.difficulty,
-        sourceRef: `Q${i + 1}`,
+        sourceRef: `ENEM-Q${i + 1}`,
+        sourceOrder: i + 1,
+        status: "published" as const,
+      });
+    }
+
+    // 5. Segunda prova demo: FUVEST 2025 · 1ª fase (6 questões, instituição
+    //    diferente, provando que o sistema não é acoplado ao ENEM)
+    const fuvestExamId: Id<"exams"> = await ctx.runMutation(internal.seedHelpers.createExam, {
+      name: `${DEMO_MARKER} FUVEST`,
+      slug: "fuvest",
+      type: "vestibular",
+      institution: "USP · FUVEST",
+      description: "Vestibular da USP — catálogo de demonstração.",
+      status: "active" as const,
+    });
+    const fuvestEditionId: Id<"examEditions"> = await ctx.runMutation(
+      internal.seedHelpers.createEdition,
+      { examId: fuvestExamId, year: 2025, phase: "1ª fase", questionCount: 6 },
+    );
+
+    const fuvestQuestions: {
+      subject: string;
+      difficulty: "easy" | "medium" | "hard";
+      statement: string;
+      alternatives: { letter: string; text: string }[];
+      correct: string;
+      explanation: string;
+    }[] = [
+      {
+        subject: "matematica",
+        difficulty: "medium",
+        statement: `${DEMO_MARKER} Se f(x) = 2x + 3, então f(5) vale:`,
+        alternatives: [
+          { letter: "A", text: "10" },
+          { letter: "B", text: "11" },
+          { letter: "C", text: "13" },
+          { letter: "D", text: "15" },
+          { letter: "E", text: "18" },
+        ],
+        correct: "C",
+        explanation: "f(5) = 2·5 + 3 = 13.",
+      },
+      {
+        subject: "portugues",
+        difficulty: "medium",
+        statement: `${DEMO_MARKER} Em "Pedro entregou o livro a Maria", o termo "a Maria" é:`,
+        alternatives: [
+          { letter: "A", text: "objeto direto" },
+          { letter: "B", text: "objeto indireto" },
+          { letter: "C", text: "agente da passiva" },
+          { letter: "D", text: "adjunto adnominal" },
+          { letter: "E", text: "vocativo" },
+        ],
+        correct: "B",
+        explanation: "Complemento do verbo entregar (entregar a algo/alguém).",
+      },
+      {
+        subject: "fisica",
+        difficulty: "hard",
+        statement: `${DEMO_MARKER} Um bloco desce um plano inclinado sem atrito. A energia que se conserva é:`,
+        alternatives: [
+          { letter: "A", text: "a cinética, apenas" },
+          { letter: "B", text: "a potencial, apenas" },
+          { letter: "C", text: "a mecânica" },
+          { letter: "D", text: "a térmica" },
+          { letter: "E", text: "nenhuma" },
+        ],
+        correct: "C",
+        explanation: "Sem atrito, a energia mecânica (cinética + potencial) se conserva.",
+      },
+      {
+        subject: "historia",
+        difficulty: "medium",
+        statement: `${DEMO_MARKER} A Semana de 22 ocorreu no contexto de:`,
+        alternatives: [
+          { letter: "A", text: "consolidação da República Oligárquica" },
+          { letter: "B", text: "crise do regime militar" },
+          { letter: "C", text: "Primeira Guerra Mundial e questionamento do modelo oligárquico" },
+          { letter: "D", text: "Era Vargas já consolidada" },
+          { letter: "E", text: "Regência" },
+        ],
+        correct: "C",
+        explanation: "O Modernismo nasce no pós-Primeira Guerra, questionando elites culturais.",
+      },
+      {
+        subject: "biologia",
+        difficulty: "easy",
+        statement: `${DEMO_MARKER} A unidade estrutural e funcional dos seres vivos é:`,
+        alternatives: [
+          { letter: "A", text: "o tecido" },
+          { letter: "B", text: "o órgão" },
+          { letter: "C", text: "a célula" },
+          { letter: "D", text: "o átomo" },
+          { letter: "E", text: "a molécula" },
+        ],
+        correct: "C",
+        explanation: "Teoria celular: toda a vida é composta por células.",
+      },
+      {
+        subject: "quimica",
+        difficulty: "medium",
+        statement: `${DEMO_MARKER} A fórmula do ácido sulfúrico é:`,
+        alternatives: [
+          { letter: "A", text: "HCl" },
+          { letter: "B", text: "HNO₃" },
+          { letter: "C", text: "H₂SO₄" },
+          { letter: "D", text: "H₃PO₄" },
+          { letter: "E", text: "H₂CO₃" },
+        ],
+        correct: "C",
+        explanation: "H₂SO₄ — ácido forte, diprótico.",
+      },
+    ];
+
+    for (const [i, q] of fuvestQuestions.entries()) {
+      await ctx.runMutation(internal.seedHelpers.createQuestion, {
+        statement: q.statement,
+        alternatives: q.alternatives,
+        correctLetter: q.correct,
+        explanation: q.explanation,
+        subjectId: S(q.subject),
+        examId: fuvestExamId,
+        editionId: fuvestEditionId,
+        difficulty: q.difficulty,
+        sourceRef: `FUV-Q${i + 1}`,
         sourceOrder: i + 1,
         status: "published" as const,
       });
@@ -475,7 +600,7 @@ export const runDemoSeed = action({
       seeded: true,
       examId,
       editionId,
-      questionsCreated: questions.length,
+      questionsCreated: questions.length + fuvestQuestions.length,
       subjectsCreated: created.length,
     };
   },

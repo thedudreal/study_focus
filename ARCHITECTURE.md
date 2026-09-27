@@ -51,11 +51,29 @@ Conclusões sobre fraqueza exigem amostra mínima (`MIN_SAMPLE = 5`) por matéri
 O histórico é separado do recorte de 30 dias. Sem dados suficientes a UI mostra
 "—" e explica o porquê, nunca inventa porcentagem.
 
-### 6. Conteúdo demo rotulado
-Todo o catálogo inicial vem do seed `[DEMO]`. A importação de conteúdo real é
-um pipeline futuro (fonte → permissão → extração → estruturação → classificação
-→ validação → revisão humana → publicação), com estados `draft/review/published`
-já presentes no schema. Nunca publicamos automaticamente conteúdo não validado.
+### 6. Conteúdo demo rotulado + pipeline de importação
+Todo o catálogo inicial vem do seed `[DEMO]`. A importação de conteúdo segue
+pipeline explícito: **fonte → permissão → CSV → validação → prévia → revisão
+humana → publicação**. Estados `draft/review/published/archived` no schema;
+`sources` rastreia licença/verificação; `importBatches` audita cada lote.
+**Nada é publicado automaticamente** — questões importadas nascem em `review`
+e só viram `published` por decisão de admin, com revalidação na transição.
+
+### 7. Camadas de acesso a questões
+```
+UI (pages)  →  services/questionsService.ts  →  convex/questions | adminQuestions | importCsv  →  banco
+```
+Componentes nunca chamam `api.questions.*` diretamente: passam pelo service,
+que centraliza filtros, paginação e tipos. A validação de questões
+(`convex/lib/questionValidation.ts`) é código puro compartilhado entre backend
+e testes — a mesma regra protege criação manual, edição, importação e a
+transição de publicação.
+
+### 8. Escala
+Paginação por cursor em todas as listagens (nunca carregar milhares de
+questões); índices por status, prova, edição, matéria e lote; busca textual via
+searchIndex do Convex. As alternativas vivem em tabela normalizada
+(`questionOptions`) para validação relacional sem escanear enunciados.
 
 ## Segurança
 
