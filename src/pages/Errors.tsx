@@ -18,9 +18,7 @@ export default function Errors() {
     setStarting(true);
     try {
       const sessionId = await createSession({
-        type: "custom",
-        feedbackMode: "immediate",
-        source: "errors",
+        type: "error_review",
         questionCount: 20,
       });
       navigate(`/app/session/${sessionId}`);

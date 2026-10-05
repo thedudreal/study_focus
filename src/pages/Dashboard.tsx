@@ -69,13 +69,17 @@ export default function Dashboard() {
       </div>
 
       {/* Sessão ativa */}
-      {activeSession && activeSession.status === "active" && (
+      {activeSession && (activeSession.status === "in_progress" || activeSession.status === "paused") && (
         <div className="panel flex flex-col gap-4 border-primary/40 p-5 sm:flex-row sm:items-center sm:justify-between glow-primary">
           <div>
             <p className="eyebrow text-primary">sessão em andamento</p>
             <p className="mt-1 font-semibold">
               {activeSession.questionCount} questões ·{" "}
-              {(activeSession.answers?.length ?? 0)} respondidas
+              {activeSession.answeredCount} respondidas
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {activeSession.status === "paused" ? "Pausada" : "Em andamento"} ·{" "}
+              {activeSession.title}
             </p>
           </div>
           <Button asChild className="shrink-0">

@@ -15,6 +15,7 @@ import {
   Trophy,
   User,
   LogOut,
+  History,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { NavLink, useNavigate } from "react-router";
@@ -23,6 +24,7 @@ const NAV_ITEMS = [
   { to: "/app", label: "Início", icon: Home, end: true },
   { to: "/app/questions", label: "Questões", icon: Layers, end: false },
   { to: "/app/today", label: "Hoje", icon: Flame, end: false },
+  { to: "/app/history", label: "Histórico", icon: History, end: false },
   { to: "/app/ranking", label: "Ranking", icon: Trophy, end: false },
   { to: "/app/profile", label: "Perfil", icon: User, end: false },
 ];

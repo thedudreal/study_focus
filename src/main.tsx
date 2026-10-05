@@ -22,6 +22,7 @@ const ExamDetail = lazy(() => import("./pages/ExamDetail.tsx"));
 const CreateSession = lazy(() => import("./pages/CreateSession.tsx"));
 const SessionPlayer = lazy(() => import("./pages/SessionPlayer.tsx"));
 const Results = lazy(() => import("./pages/Results.tsx"));
+const History = lazy(() => import("./pages/History.tsx"));
 const Favorites = lazy(() => import("./pages/Favorites.tsx"));
 const Errors = lazy(() => import("./pages/Errors.tsx"));
 const AdminLayout = lazy(() => import("./pages/admin/AdminLayout.tsx"));
@@ -154,6 +155,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="/app/exams/:examId" element={<Protected><ExamDetail /></Protected>} />
               <Route path="/app/session/:sessionId" element={<Protected><SessionPlayer /></Protected>} />
               <Route path="/app/results/:sessionId" element={<Protected><Results /></Protected>} />
+              <Route path="/app/history" element={<Protected><History /></Protected>} />
               <Route path="/app/today" element={<Protected><Today /></Protected>} />
               <Route path="/app/ranking" element={<Protected><Ranking /></Protected>} />
               <Route path="/app/profile" element={<Protected><Profile /></Protected>} />

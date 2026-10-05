@@ -22,7 +22,6 @@ export default function ExamDetail() {
     try {
       const sessionId = await createSession({
         type: "exam",
-        feedbackMode: "end",
         editionId: editionId as Id<"examEditions">,
       });
       navigate(`/app/session/${sessionId}`);

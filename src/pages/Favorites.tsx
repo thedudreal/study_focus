@@ -18,9 +18,7 @@ export default function Favorites() {
     setStarting(true);
     try {
       const sessionId = await createSession({
-        type: "custom",
-        feedbackMode: "immediate",
-        source: "favorites",
+        type: "favorites",
         questionCount: 20,
       });
       navigate(`/app/session/${sessionId}`);

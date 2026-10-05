@@ -192,58 +192,118 @@ export const videos = defineTable({
 });
 
 // ============================================================
-// DOMÍNIO: STUDY SESSIONS
+// DOMÍNIO: STUDY SESSION ENGINE
+//
+// Um único motor alimenta: questões rápidas (custom), do dia (daily),
+// treinar erros (error_review), favoritos (favorites), revisão (review),
+// simulado (simulation) e prova oficial (exam). A diferença entre eles
+// está principalmente na CONFIGURAÇÃO da sessão (ver lib/sessionCore.ts).
 // ============================================================
 
 export const sessionTypes = [
   "custom",
   "daily",
   "exam",
+  "single_question",
+  "error_review",
+  "favorites",
+  "review",
+  "simulation",
+] as const;
+
+export const sessionStatuses = [
+  "created",
+  "in_progress",
+  "paused",
+  "completed",
+  "abandoned",
+] as const;
+
+export const sessionTimerModes = ["none", "total", "per_question"] as const;
+export const sessionFeedbackModes = ["immediate", "end"] as const;
+export const sessionOrderModes = ["original", "random"] as const;
+
+export const sessionQuestionStatuses = [
+  "pending",
+  "answered",
+  "skipped",
 ] as const;
 
 export const studySessions = defineTable({
   userId: v.id("users"),
-  type: v.union(
-    v.literal("custom"),
-    v.literal("daily"),
-    v.literal("exam"),
-  ),
-  /** Modo de feedback: imediato (estudo) vs. só no final (prova) */
-  feedbackMode: v.union(v.literal("immediate"), v.literal("end")),
+  type: v.union(...sessionTypes.map((t) => v.literal(t))),
+  status: v.union(...sessionStatuses.map((s) => v.literal(s))),
+  /** Título amigável (ex.: "Treino de Matemática", "ENEM 2024 · 1º dia") */
+  title: v.optional(v.string()),
+
+  /** COMO responder: feedback imediato (estudo) vs. só no final (prova) */
+  feedbackMode: v.union(...sessionFeedbackModes.map((f) => v.literal(f))),
+  /** Cronômetro: none | total (contagem regressiva) | per_question */
+  timerMode: v.union(...sessionTimerModes.map((t) => v.literal(t))),
+  /** Limite total em segundos (timerMode=total). 0/exhausted => finaliza */
+  totalTimeSeconds: v.optional(v.number()),
+  /** Limite por questão em segundos (timerMode=per_question) */
+  perQuestionSeconds: v.optional(v.number()),
+  /** Ordem definida na criação e congelada no snapshot */
+  orderMode: v.union(...sessionOrderModes.map((o) => v.literal(o))),
+  allowBackNavigation: v.boolean(),
+  allowPause: v.boolean(),
+
+  // Filtros de origem (o QUE responder)
   examId: v.optional(v.id("exams")),
   editionId: v.optional(v.id("examEditions")),
   subjectId: v.optional(v.id("taxonomyNodes")),
+  topicId: v.optional(v.id("taxonomyNodes")),
+  difficulty: v.optional(v.union(
+    v.literal("easy"),
+    v.literal("medium"),
+    v.literal("hard"),
+  )),
   questionCount: v.number(),
-  /** Questões da sessão, na ordem de resposta */
-  questionIds: v.array(v.id("questions")),
   /** Rótulo determinístico de origem: aquecimento / revisão / desafio */
   dailyKind: v.optional(v.union(
     v.literal("warmup"),
     v.literal("review"),
     v.literal("challenge"),
   )),
-  /** Origem especial da seleção: caderno de erros ou favoritos */
-  source: v.optional(v.union(
-    v.literal("errors"),
-    v.literal("favorites"),
-  )),
-  timerSeconds: v.optional(v.number()),
-  status: v.union(
-    v.literal("active"),
-    v.literal("completed"),
-    v.literal("abandoned"),
-  ),
+
+  // Contadores desnormalizados (atualizados a cada resposta)
+  answeredCount: v.number(),
+  correctCount: v.number(),
+  incorrectCount: v.number(),
+  /** Posição corrente (0-based); usada para retomar a sessão */
   currentIndex: v.optional(v.number()),
-  answers: v.optional(v.array(v.object({
-    questionId: v.id("questions"),
-    selectedLetter: v.optional(v.string()),
-    isCorrect: v.optional(v.boolean()),
-    timeSpentSeconds: v.optional(v.number()),
-    flagged: v.boolean(),
-  }))),
+
+  // Cronômetro real, sobrevive a reload/pausa:
+  // elapsed = (now - startedAt) - pausedAccumSeconds
   startedAt: v.number(),
+  pausedAccumSeconds: v.number(),
+  /** Momento em que a pausa atual começou (null quando não pausada) */
+  lastPausedAt: v.optional(v.number()),
   completedAt: v.optional(v.number()),
-}).index("by_user_status", ["userId", "status"]);
+  timerSeconds: v.optional(v.number()),
+}).index("by_user_status", ["userId", "status"])
+  .index("by_user_time", ["userId", "startedAt"]);
+
+/**
+ * SNAPSHOT sessão ↔ questões.
+ * Definido uma única vez na criação (ordem estável, sobrevive a reload);
+ * é a única fonte de verdade sobre quais questões pertencem à sessão.
+ */
+export const studySessionQuestions = defineTable({
+  sessionId: v.id("studySessions"),
+  questionId: v.id("questions"),
+  position: v.number(), // 0-based, ordem de resposta da sessão
+  status: v.union(...sessionQuestionStatuses.map((s) => v.literal(s))),
+  selectedLetter: v.optional(v.string()),
+  isCorrect: v.optional(v.boolean()),
+  timeSpentSeconds: v.optional(v.number()),
+  markedForReview: v.boolean(),
+  answeredAt: v.optional(v.number()),
+})
+  .index("by_session_position", ["sessionId", "position"])
+  .index("by_session_status", ["sessionId", "status"])
+  .index("by_question", ["questionId"]);
 
 // ============================================================
 // DOMÍNIO: ATTEMPTS / FAVORITOS / ERROS
@@ -253,6 +313,8 @@ export const questionAttempts = defineTable({
   userId: v.id("users"),
   questionId: v.id("questions"),
   sessionId: v.optional(v.id("studySessions")),
+  /** Posição da questão dentro da sessão (rastreabilidade do snapshot) */
+  sessionPosition: v.optional(v.number()),
   selectedLetter: v.optional(v.string()),
   isCorrect: v.boolean(),
   timeSpentSeconds: v.optional(v.number()),
@@ -335,6 +397,7 @@ const schema = defineSchema(
     importBatches,
     videos,
     studySessions,
+    studySessionQuestions,
     questionAttempts,
     favorites,
     errorBook,
