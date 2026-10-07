@@ -65,11 +65,15 @@ function SessionClock({
   base,
   running,
   totalLimit,
+  warnSeconds,
   onExpire,
 }: {
   base: number;
   running: boolean;
   totalLimit?: number;
+  /** Limiar do estado de alerta; padrão 60s. Para relógios curtos por questão,
+   *  usa 20% do limite. */
+  warnSeconds?: number;
   onExpire: () => void;
 }) {
   const [tick, setTick] = useState(0);
@@ -92,7 +96,7 @@ function SessionClock({
     onExpire();
   }, [remaining, totalLimit, running, onExpire]);
 
-  const expiring = remaining !== null && remaining <= 60;
+  const expiring = remaining !== null && remaining <= (warnSeconds ?? 60);
   return (
     <span
       className={`font-mono-tech flex items-center gap-1.5 rounded-md px-2 py-1 text-sm ${
@@ -465,6 +469,14 @@ export default function SessionPlayer() {
   const running =
     !session.paused && (session.status === "in_progress" || session.status === "created");
 
+  // Relógio POR QUESTÃO: ativo só enquanto a questão corrente está pendente.
+  // O restante vem do servidor (questionElapsedSeconds) — sobrevive a reload.
+  const perQuestionLimit =
+    session.timerMode === "per_question"
+      ? (session.perQuestionSeconds ?? undefined)
+      : undefined;
+  const perQActive = perQuestionLimit !== undefined && row?.status === "pending";
+
   // ---- Handlers ----
   const handleAnswer = async (selectedLetter: string) => {
     await answerMutation({
@@ -522,6 +534,21 @@ export default function SessionPlayer() {
     }
   };
 
+  // Tempo da QUESTÃO esgotado: marca como deixada para depois e avança.
+  // Também cobre o reload: ao remontar com restante 0, dispara de novo.
+  const handleQuestionTimeExpired = async () => {
+    if (row?.status !== "pending") return;
+    try {
+      await skipMutation({ sessionId: session._id, position: currentIndex });
+      if (currentIndex + 1 < total) {
+        await navigateMutation({ sessionId: session._id, position: currentIndex + 1 });
+      }
+      toast.info("Tempo desta questão esgotado — deixada para depois.");
+    } catch {
+      toast.error("Tempo esgotado. Avance manualmente para continuar.");
+    }
+  };
+
   const handlePause = async () => {
     try {
       await pauseMutation({ sessionId: session._id });
@@ -561,11 +588,16 @@ export default function SessionPlayer() {
         </div>
         <div className="flex items-center gap-2">
           <SessionClock
-            key={state.serverNow}
-            base={session.elapsedSeconds}
+            key={perQActive ? `q-${currentIndex}` : state.serverNow}
+            base={perQActive ? (session.questionElapsedSeconds ?? 0) : session.elapsedSeconds}
             running={running}
-            totalLimit={totalLimit}
-            onExpire={handleTimeExpired}
+            totalLimit={perQActive ? perQuestionLimit : totalLimit}
+            warnSeconds={
+              perQActive && perQuestionLimit !== undefined
+                ? Math.max(5, Math.round(perQuestionLimit * 0.2))
+                : undefined
+            }
+            onExpire={perQActive ? handleQuestionTimeExpired : handleTimeExpired}
           />
           {session.allowPause &&
             (session.paused ? (

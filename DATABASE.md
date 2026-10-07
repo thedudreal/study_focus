@@ -41,7 +41,8 @@ Arquivo único de verdade: `src/convex/schema.ts`.
   `difficulty`, `questionType` (`multiple_choice`), `sourceId` (ID externo),
   `sourceDbId` (→ `sources`), `imageUrl`, `status`
   (`draft|review|published|archived`), `importBatchId` (→ `importBatches`),
-  `contentHash` (dedupe), `videoId`.
+  `contentHash` (dedupe, índice `by_content_hash` consultado pela importação),
+  `videoId`.
   Índices: `by_status`, `by_exam`, `by_edition (editionId, sourceOrder)`,
   `by_subject`, `by_batch`, `by_source_id`, `searchIndex search_statement`.
 
@@ -73,7 +74,9 @@ Arquivo único de verdade: `src/convex/schema.ts`.
   - progresso: `questionCount`, `answeredCount`, `correctCount`,
     `incorrectCount` (desnormalizados), `currentIndex` (cursor server-side),
     `timerSeconds`, `pausedAccumSeconds`, `lastPausedAt`, `startedAt`,
-    `completedAt`.
+    `completedAt`, `currentQuestionStartedAt` (âncora do relógio por questão;
+    reiniciada ao aterrissar em questão pendente e deslocada ao retomar de
+    uma pausa — o tempo gasto por questão é medido no servidor a partir dela).
   Índices: `by_user_status`, `by_user_created`.
   **Conceito central**: prova, simulado, treino, questões do dia, erros e
   favoritos são registros nesta tabela, não sistemas à parte.

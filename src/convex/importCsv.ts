@@ -29,6 +29,24 @@ async function requireAdminId(
   return userId;
 }
 
+/** Hashes que JÁ existem no banco (dedupe de importação). Admin-only. */
+export const checkContentHashes = query({
+  args: { hashes: v.array(v.string()) },
+  handler: async (ctx, { hashes }) => {
+    await requireAdminId(ctx);
+    const existing: Record<string, boolean> = {};
+    // Limita a varredura: lotes absurdos raramente passam de milhares de linhas.
+    for (const h of hashes.slice(0, 1000)) {
+      const found = await ctx.db
+        .query("questions")
+        .withIndex("by_content_hash", (q) => q.eq("contentHash", h))
+        .first();
+      if (found) existing[h] = true;
+    }
+    return existing;
+  },
+});
+
 // ---------------- 1. Preview (sem gravação) ----------------
 
 export const previewImport = action({
@@ -43,12 +61,37 @@ export const previewImport = action({
 
     const result = parseQuestionsCsv(csvContent);
 
+    // Duplicatas: enunciado idêntico já existe no banco OU repete no arquivo.
+    const seen = new Set<string>();
+    const hashByRow = new Map<number, string>();
+    const duplicateRows: number[] = [];
+    for (const q of result.questions) {
+      const h = hashStatement(q.statement);
+      hashByRow.set(q.row, h);
+      if (seen.has(h)) {
+        duplicateRows.push(q.row);
+        continue;
+      }
+      seen.add(h);
+    }
+    const existingHashes = await ctx.runQuery(api.importCsv.checkContentHashes, {
+      hashes: [...seen],
+    });
+    for (const q of result.questions) {
+      const h = hashByRow.get(q.row);
+      if (h && existingHashes[h] && !duplicateRows.includes(q.row)) {
+        duplicateRows.push(q.row);
+      }
+    }
+
     return {
       filename,
       totalRows: result.totalRows,
       validCount: result.validCount,
       errorCount: result.errorCount,
       rowErrors: result.rowErrors,
+      duplicateRows,
+      duplicateCount: duplicateRows.length,
       preview: result.questions.slice(0, 5).map((q) => ({
         row: q.row,
         exam: q.exam,
@@ -221,8 +264,35 @@ export const confirmImport = mutation({
 
     const perRow: { row: number; ok: boolean; errors?: string[] }[] = [];
     let imported = 0;
+    let duplicateSkipped = 0;
+    const seenInBatch = new Set<string>();
 
     for (const q of questions) {
+      // 3.0 Dedupe por contentHash: enunciado idêntico já existe no banco ou
+      // repete no próprio lote. A linha é pulada (não é erro de conteúdo).
+      const hash = hashStatement(q.statement);
+      const intraBatch = seenInBatch.has(hash);
+      if (!intraBatch) seenInBatch.add(hash);
+      const inDb = !intraBatch
+        ? (await ctx.db
+            .query("questions")
+            .withIndex("by_content_hash", (qq) => qq.eq("contentHash", hash))
+            .first()) !== null
+        : false;
+      if (intraBatch || inDb) {
+        duplicateSkipped += 1;
+        perRow.push({
+          row: q.row,
+          ok: false,
+          errors: [
+            intraBatch
+              ? "duplicada no arquivo — enunciado idêntico repetido; não importada"
+              : "duplicada — enunciado idêntico já existe; não importada",
+          ],
+        });
+        continue;
+      }
+
       const errors: string[] = [];
 
       // 3.2 Resolve taxonomia e exame/edição
@@ -276,7 +346,7 @@ export const confirmImport = mutation({
           sourceDbId,
           status: "review" as const,
           importBatchId: batchId,
-          contentHash: hashStatement(q.statement),
+          contentHash: hash,
         });
         imported += 1;
         perRow.push({ row: q.row, ok: true });
@@ -285,16 +355,20 @@ export const confirmImport = mutation({
       }
     }
 
-    // 3.5 Finaliza o lote
+    // 3.5 Finaliza o lote: duplicatas puladas não tornam o lote falho.
     await ctx.db.patch(batchId, {
       importedCount: imported,
-      status: imported === questions.length ? ("imported" as const) : ("failed" as const),
+      status:
+        imported + duplicateSkipped === questions.length
+          ? ("imported" as const)
+          : ("failed" as const),
     });
 
     return {
       batchId,
       imported,
-      failed: questions.length - imported,
+      duplicateSkipped,
+      failed: questions.length - imported - duplicateSkipped,
       perRow,
     };
   },

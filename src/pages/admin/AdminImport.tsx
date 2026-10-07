@@ -34,6 +34,9 @@ interface PreviewResult {
   validCount: number;
   errorCount: number;
   rowErrors: { row: number; errors: string[] }[];
+  /** Linhas com enunciado idêntico a outra (banco ou próprio arquivo). */
+  duplicateRows: number[];
+  duplicateCount: number;
   preview: PreviewRow[];
   validQuestions: {
     row: number;
@@ -68,6 +71,7 @@ export default function AdminImport() {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{
     imported: number;
+    duplicateSkipped: number;
     failed: number;
   } | null>(null);
 
@@ -113,13 +117,26 @@ export default function AdminImport() {
         filename: preview.filename,
         questions: preview.validQuestions,
       });
-      setImportResult({ imported: result.imported, failed: result.failed });
+      setImportResult({
+        imported: result.imported,
+        duplicateSkipped: result.duplicateSkipped,
+        failed: result.failed,
+      });
       if (result.failed > 0) {
-        const firstFail = result.perRow.find((r) => !r.ok);
+        // Exemplo de falha real (duplicatas puladas não são erro).
+        const firstFail = result.perRow.find(
+          (r) => !r.ok && !r.errors?.[0]?.startsWith("duplicada"),
+        );
+        const dupNote =
+          result.duplicateSkipped > 0 ? `, ${result.duplicateSkipped} duplicadas puladas` : "";
         toast.warning(
-          `${result.imported} importadas, ${result.failed} falharam${
+          `${result.imported} importadas${dupNote}, ${result.failed} falharam${
             firstFail ? ` (ex.: linha ${firstFail.row}: ${firstFail.errors?.join("; ")})` : ""
           }.`,
+        );
+      } else if (result.duplicateSkipped > 0) {
+        toast.success(
+          `${result.imported} questões importadas; ${result.duplicateSkipped} duplicadas puladas.`,
         );
       } else {
         toast.success(`${result.imported} questões importadas como review.`);
@@ -243,7 +260,7 @@ export default function AdminImport() {
           <section className="panel p-6">
             <p className="eyebrow text-muted-foreground">importação</p>
             <p className="mt-2 font-semibold">Arquivo: {preview.filename}</p>
-            <div className="mt-4 grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-border bg-border">
+            <div className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-4">
               <div className="bg-card p-4 text-center">
                 <p className="font-mono-tech text-2xl font-semibold">
                   {preview.totalRows}
@@ -257,12 +274,37 @@ export default function AdminImport() {
                 <p className="text-xs text-muted-foreground">válidas</p>
               </div>
               <div className="bg-card p-4 text-center">
+                <p className="font-mono-tech text-2xl font-semibold text-chart-4">
+                  {preview.duplicateCount}
+                </p>
+                <p className="text-xs text-muted-foreground">duplicadas</p>
+              </div>
+              <div className="bg-card p-4 text-center">
                 <p className="font-mono-tech text-2xl font-semibold text-destructive">
                   {preview.errorCount}
                 </p>
                 <p className="text-xs text-muted-foreground">com erros</p>
               </div>
             </div>
+
+            {/* Duplicatas (enunciado idêntico) */}
+            {preview.duplicateCount > 0 && (
+              <div className="mt-5 rounded-lg border border-chart-4/40 bg-chart-4/5 p-4">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="size-4 text-chart-4" />
+                  <p className="text-sm font-semibold text-chart-4">
+                    {preview.duplicateCount} duplicata{preview.duplicateCount > 1 ? "s" : ""} —
+                    enunciado idêntico já existe no banco ou repete no arquivo
+                  </p>
+                </div>
+                <p className="mt-2 font-mono-tech text-xs text-muted-foreground">
+                  Linhas: {preview.duplicateRows.join(", ")}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Elas serão puladas na importação — nenhuma questão repetida entra no banco.
+                </p>
+              </div>
+            )}
 
             {/* Erros por linha */}
             {preview.rowErrors.length > 0 && (
@@ -330,7 +372,7 @@ export default function AdminImport() {
                 className="glow-primary"
               >
                 {importing ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
-                Importar {preview.validCount} questões como review
+                Importar {preview.validCount - preview.duplicateCount} questões como review
               </Button>
             </div>
           </div>
@@ -344,6 +386,8 @@ export default function AdminImport() {
           <div className="flex-1">
             <p className="font-semibold">
               {importResult.imported} questões importadas
+              {importResult.duplicateSkipped > 0 &&
+                `, ${importResult.duplicateSkipped} duplicatas puladas`}
               {importResult.failed > 0 && `, ${importResult.failed} falharam`}
             </p>
             <p className="mt-1 text-sm text-muted-foreground">

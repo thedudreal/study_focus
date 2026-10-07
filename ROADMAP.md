@@ -49,7 +49,10 @@ genérico de exames/taxonomia; motor único de sessões.
 - [x] Resposta persiste em `questionAttempts` (único histórico, sem duplicar)
 - [x] Posse validada no backend em toda leitura/escrita (equivalente RLS)
 - [ ] Resultado por tópico e por dificuldade (além de matéria)
-- [ ] Timer por questão aplicado no player (schema e política prontos)
+- [x] Timer por questão aplicado no player: âncora `currentQuestionStartedAt`
+      no servidor (sobrevive a reload), pausa não consome o tempo, expiração
+      marca a questão como "deixada para depois" e avança; resposta tardia
+      recusada no backend com tolerância de rede (5s)
 
 ## Fase 3 — Banco de questões + importação ✅ (esta entrega)
 - [x] Tabela normalizada de alternativas (`questionOptions`) com regra
@@ -65,7 +68,9 @@ genérico de exames/taxonomia; motor único de sessões.
 - [x] Camada de serviço no frontend (`src/services/questionsService.ts`)
 - [x] 36 testes unitários (parser CSV, validação, CSV de exemplo)
 - [x] Seed ampliado: ENEM (24) + FUVEST (6) = 30 questões demo + CSV de exemplo
-- [ ] Detecção de duplicatas via `contentHash` (hash já gravado; comparação pendente)
+- [x] Dedupe por `contentHash`: prévia sinaliza duplicatas (banco ou
+      repetidas no arquivo) e a confirmação as pula — lote permanece
+      `imported`; índice `by_content_hash` para lookup O(log n)
 - [ ] Edição em lote e fila de revisão dedicada
 - [ ] Criação automática de matérias/áreas ausentes no CSV (hoje: erro claro
       pedindo cadastro prévio)

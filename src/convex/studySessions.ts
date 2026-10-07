@@ -12,6 +12,9 @@ import {
 import {
   resolveSessionConfig,
   computeElapsedSeconds,
+  computeQuestionElapsedSeconds,
+  isPerQuestionTimeExpired,
+  PER_QUESTION_GRACE_SECONDS,
   SESSION_TYPE_LABEL,
 } from "./lib/sessionCore";
 import type { SessionQuestionState } from "./lib/sessionCore";
@@ -302,6 +305,7 @@ export const createSession = mutation({
       incorrectCount: 0,
       currentIndex: 0,
       startedAt: now,
+      currentQuestionStartedAt: now,
       pausedAccumSeconds: 0,
     });
 
@@ -434,6 +438,14 @@ export const getSessionState = query({
         paused,
         startedAt: session.startedAt,
         completedAt: session.completedAt,
+        /** Relógio por questão (só quando o limite por questão está ativo e a
+         *  corrente está pendente): derivado do servidor, sobrevive a reload. */
+        questionElapsedSeconds: computeQuestionElapsedSeconds(
+          paused ? Math.min(Date.now(), session.lastPausedAt ?? Date.now()) : Date.now(),
+          session.currentQuestionStartedAt,
+          paused,
+          session.lastPausedAt,
+        ),
       },
       question,
       isFavorite,
@@ -485,13 +497,47 @@ export const answerQuestion = mutation({
     const isCorrect = question.correctLetter === selectedLetter;
     const wasAnswered = row.status === "answered";
     const wasCorrect = row.isCorrect === true;
+    const now = Date.now();
+
+    // Relógio por questão: pendente + no cursor + expirada (com tolerância de
+    // rede) => resposta recusada; a questão é deixada para depois.
+    if (
+      session.timerMode === "per_question" &&
+      !wasAnswered &&
+      position === (session.currentIndex ?? 0) &&
+      session.perQuestionSeconds !== undefined
+    ) {
+      const spent = computeQuestionElapsedSeconds(
+        now,
+        session.currentQuestionStartedAt,
+        false,
+        undefined,
+      );
+      if (
+        spent !== undefined &&
+        isPerQuestionTimeExpired(spent, session.perQuestionSeconds, PER_QUESTION_GRACE_SECONDS)
+      ) {
+        throw new Error(
+          "Tempo desta questão esgotado — ela foi deixada para depois. Avance para continuar.",
+        );
+      }
+    }
+
+    // Tempo por questão é medido no SERVIDOR a partir da âncora: o cliente
+    // não precisa (nem pode) reportar o tempo gasto.
+    const serverTimeSpent =
+      session.currentQuestionStartedAt !== undefined && !wasAnswered
+        ? Math.max(0, Math.round((now - session.currentQuestionStartedAt) / 1000))
+        : undefined;
 
     await ctx.db.patch(row._id, {
       status: "answered",
       selectedLetter,
       isCorrect,
-      timeSpentSeconds,
-      answeredAt: Date.now(),
+      timeSpentSeconds: wasAnswered
+        ? (timeSpentSeconds ?? row.timeSpentSeconds)
+        : (serverTimeSpent ?? timeSpentSeconds),
+      answeredAt: now,
     });
 
     // O cursor só se move via navigateTo — a correção imediata precisa
@@ -690,7 +736,19 @@ export const navigateTo = mutation({
       throw new Error("Nesta sessão você segue a ordem — não é possível voltar.");
     }
     if (position !== current) {
-      await ctx.db.patch(sessionId, { currentIndex: position });
+      // Aterrissa em questão ainda não respondida => reinicia o relógio
+      // por questão (cada questão ganha seu tempo integral).
+      const target = await ctx.db
+        .query("studySessionQuestions")
+        .withIndex("by_session_position", (q) =>
+          q.eq("sessionId", sessionId).eq("position", position),
+        )
+        .unique();
+      const resetAnchor = target !== undefined && target !== null && target.status !== "answered";
+      await ctx.db.patch(sessionId, {
+        currentIndex: position,
+        ...(resetAnchor ? { currentQuestionStartedAt: Date.now() } : {}),
+      });
     }
     return { ok: true as const };
   },
@@ -753,6 +811,10 @@ export const resumeSession = mutation({
       status: "in_progress",
       pausedAccumSeconds: session.pausedAccumSeconds + pausedSeconds,
       lastPausedAt: undefined,
+      // Pausa não consome o tempo da questão: desloca a âncora.
+      ...(session.currentQuestionStartedAt !== undefined
+        ? { currentQuestionStartedAt: session.currentQuestionStartedAt + pausedSeconds * 1000 }
+        : {}),
     });
     return { ok: true as const, status: "in_progress" as const };
   },
@@ -1078,6 +1140,7 @@ export const retryErrorsSession = mutation({
       incorrectCount: 0,
       currentIndex: 0,
       startedAt: now,
+      currentQuestionStartedAt: now,
       pausedAccumSeconds: 0,
     });
 

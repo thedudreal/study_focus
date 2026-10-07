@@ -270,6 +270,40 @@ export function isTimeExpired(
   return elapsedSeconds >= totalTimeSeconds;
 }
 
+// ---- Relógio POR QUESTÃO ----
+
+/**
+ * Tempo decorrido na questão corrente, derivado do servidor (nunca do
+ * cliente): anchor = studySessions.currentQuestionStartedAt. Em pausa, congela
+ * no lastPausedAt; ao retomar, a âncora é deslocada pelos segundos pausados.
+ */
+export function computeQuestionElapsedSeconds(
+  now: number,
+  anchorMs: number | undefined,
+  paused: boolean,
+  lastPausedAt: number | undefined,
+): number | undefined {
+  if (anchorMs === undefined) return undefined;
+  const ref = paused ? Math.min(lastPausedAt ?? now, now) : now;
+  return Math.max(0, Math.round((ref - anchorMs) / 1000));
+}
+
+/**
+ * Tolerância (s) para aceitar a resposta no limite: rede/latência não devem
+ * punir quem respondeu a tempo no relógio local.
+ */
+export const PER_QUESTION_GRACE_SECONDS = 5;
+
+/** Expirou o tempo da questão corrente? (pendente e acima do limite + tolerância) */
+export function isPerQuestionTimeExpired(
+  elapsedSeconds: number,
+  perQuestionSeconds: number | undefined,
+  graceSeconds: number = PER_QUESTION_GRACE_SECONDS,
+): boolean {
+  if (perQuestionSeconds === undefined) return false;
+  return elapsedSeconds > perQuestionSeconds + graceSeconds;
+}
+
 // ---- Resultado ----
 
 export interface ResultCounts {

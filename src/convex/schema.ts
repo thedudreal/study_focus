@@ -129,7 +129,8 @@ export const questions = defineTable({
   ),
   /** Lote de importação que originou a questão (rastreabilidade) */
   importBatchId: v.optional(v.id("importBatches")),
-  /** Hash para detecção de duplicatas (fase futura: similaridade) */
+  /** Hash para detecção de duplicatas (índice by_content_hash; import e
+   *  criação manual consultam antes de gravar) */
   contentHash: v.optional(v.string()),
   videoId: v.optional(v.id("videos")),
 }).index("by_status", ["status"])
@@ -138,6 +139,7 @@ export const questions = defineTable({
   .index("by_subject", ["subjectId", "status"])
   .index("by_batch", ["importBatchId"])
   .index("by_source_id", ["sourceId"])
+  .index("by_content_hash", ["contentHash"])
   .searchIndex("search_statement", {
     searchField: "statement",
     filterFields: ["status"],
@@ -280,6 +282,9 @@ export const studySessions = defineTable({
   pausedAccumSeconds: v.number(),
   /** Momento em que a pausa atual começou (null quando não pausada) */
   lastPausedAt: v.optional(v.number()),
+  /** Âncora do relógio por questão: início da questão corrente (server-side,
+   *  sobrevive a reload; deslocada ao retomar de uma pausa) */
+  currentQuestionStartedAt: v.optional(v.number()),
   completedAt: v.optional(v.number()),
   timerSeconds: v.optional(v.number()),
 }).index("by_user_status", ["userId", "status"])

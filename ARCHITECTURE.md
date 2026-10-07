@@ -125,4 +125,14 @@ searchIndex do Convex. As alternativas vivem em tabela normalizada
 
 - Vídeos: tabela pronta (`videos`), link por questão (`questions.videoId`).
 - Admin: mutations prontas, painel pendente (ver `ROADMAP.md`).
-- Duplicatas: `contentHash` reservado na tabela de questões.
+- Dedupe aproximado (similaridade) sobre o `contentHash` exato já em uso.
+
+## Notas complementares
+
+- **Relógio por questão** — a âncora `studySessions.currentQuestionStartedAt`
+  vive no servidor: reinicia ao aterrissar em questão pendente, é deslocada
+  ao retomar de uma pausa (pausa não consome tempo de questão) e o tempo
+  gasto em cada tentativa é medido a partir dela (o cliente não reporta
+  tempo). A expiração é validada com tolerância de 5s no backend; no player,
+  esgotar marca a questão como "deixada para depois" e avança — inclusive
+  após um reload, pois o restante é recalculado do servidor.

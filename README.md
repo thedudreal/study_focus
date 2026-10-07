@@ -51,8 +51,11 @@ bun run build                # typecheck + build de produção
     marcação para revisão;
   - **Fazer prova** (`exam`) — edição específica, ordem original da prova.
   Configurações comuns: feedback imediato/no final, cronômetro (nenhum/tempo
-  total/tempo por questão), ordem original/aleatória (definida na criação e
-  estável para sempre), permitir voltar, permitir pausar, quantidade (5–90).
+  total/tempo por questão — o relógio por questão é uma **âncora no servidor**:
+  sobrevive a reload, pausa não o consome e, ao esgotar, a questão é marcada
+  como "deixada para depois" e o player avança), ordem original/aleatória
+  (definida na criação e estável para sempre), permitir voltar, permitir
+  pausar, quantidade (5–90).
 - **Snapshot da sessão** — a sessão grava a relação ordenada
   sessão↔questões (`studySessionQuestions`); navegar, retomar e revisar nunca
   re-executam filtros. Se o filtro devolve menos que o pedido, a criação
@@ -80,7 +83,10 @@ bun run build                # typecheck + build de produção
 
 O sistema de questões é real: tudo vem do banco (nenhum array mockado), com
 fluxo editorial **draft → review → published** e permissões aplicadas no
-backend (role `admin`).
+backend (role `admin`). A importação faz **dedupe por `contentHash`**: linhas
+com enunciado idêntico a uma questão existente ou repetidas no próprio
+arquivo são sinalizadas na prévia e puladas na confirmação (lote continua
+`imported`; nenhuma questão repetida entra no banco).
 
 ### Painel administrativo
 

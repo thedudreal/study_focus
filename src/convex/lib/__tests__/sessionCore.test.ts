@@ -8,6 +8,9 @@ import {
   computeElapsedSeconds,
   computeRemainingSeconds,
   isTimeExpired,
+  computeQuestionElapsedSeconds,
+  isPerQuestionTimeExpired,
+  PER_QUESTION_GRACE_SECONDS,
   buildResultCounts,
   SESSION_TYPE_LABEL,
 } from "../sessionCore";
@@ -191,6 +194,45 @@ describe("computeRemainingSeconds / isTimeExpired", () => {
     expect(isTimeExpired(299, 300)).toBe(false);
     expect(isTimeExpired(300, 300)).toBe(true);
     expect(isTimeExpired(301, 300)).toBe(true);
+  });
+});
+
+describe("computeQuestionElapsedSeconds (relógio por questão)", () => {
+  it("undefined quando não há âncora (sessões antigas)", () => {
+    expect(computeQuestionElapsedSeconds(Date.now(), undefined, false, undefined)).toBeUndefined();
+  });
+
+  it("conta desde a âncora da questão", () => {
+    const anchor = 1_000_000;
+    expect(computeQuestionElapsedSeconds(anchor + 30_000, anchor, false, undefined)).toBe(30);
+  });
+
+  it("congela na pausa (usa lastPausedAt como referência)", () => {
+    const anchor = 1_000_000;
+    // pausada 5 min depois de começar; agora está 1h depois — não conta
+    expect(
+      computeQuestionElapsedSeconds(anchor + 3_600_000, anchor, true, anchor + 300_000),
+    ).toBe(300);
+  });
+
+  it("nunca fica negativo", () => {
+    expect(computeQuestionElapsedSeconds(500, 1_000, false, undefined)).toBe(0);
+  });
+});
+
+describe("isPerQuestionTimeExpired", () => {
+  it("false sem limite", () => {
+    expect(isPerQuestionTimeExpired(9999, undefined)).toBe(false);
+  });
+
+  it("dentro do limite: false (inclusive no limite exato)", () => {
+    expect(isPerQuestionTimeExpired(60, 60)).toBe(false);
+    expect(isPerQuestionTimeExpired(64, 60)).toBe(false);
+  });
+
+  it("expira só após a tolerância de rede", () => {
+    expect(isPerQuestionTimeExpired(60 + PER_QUESTION_GRACE_SECONDS, 60)).toBe(false);
+    expect(isPerQuestionTimeExpired(60 + PER_QUESTION_GRACE_SECONDS + 1, 60)).toBe(true);
   });
 });
 
