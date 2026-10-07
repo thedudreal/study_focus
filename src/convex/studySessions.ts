@@ -109,13 +109,22 @@ async function getQuestionGroups(
 }
 
 /** Projeta o snapshot para o formato puro usado no cálculo de resultado. */
-function groupsToStates(groups: QuestionGroup[]): SessionQuestionState[] {
+/**
+ * Snapshot enviado ao client. Nada do gabarito vaza antes da hora:
+ * - a letra escolhida só viaja para questões já respondidas;
+ * - acerto/erro só no modo estudo — no modo prova o resultado só é
+ *   calculado após finalizar (getResultQuestions).
+ */
+function groupsToStates(
+  groups: QuestionGroup[],
+  showFeedback: boolean,
+): SessionQuestionState[] {
   return groups.map((g) => ({
     questionId: g.row.questionId,
     position: g.row.position,
     status: g.row.status,
-    selectedLetter: g.row.selectedLetter,
-    isCorrect: g.row.isCorrect,
+    selectedLetter: g.row.status === "answered" ? g.row.selectedLetter : undefined,
+    isCorrect: g.row.status === "answered" && showFeedback ? g.row.isCorrect : undefined,
     timeSpentSeconds: g.row.timeSpentSeconds,
     markedForReview: g.row.markedForReview,
   }));
@@ -429,7 +438,7 @@ export const getSessionState = query({
       question,
       isFavorite,
       review: group?.review ?? null,
-      questions: groupsToStates(groups),
+      questions: groupsToStates(groups, showFeedback),
     };
   },
 });
@@ -485,15 +494,8 @@ export const answerQuestion = mutation({
       answeredAt: Date.now(),
     });
 
-    // Avança o cursor quando respondemos a questão corrente.
-    if (position === (session.currentIndex ?? 0)) {
-      const nextIndex = !session.allowBackNavigation
-        ? Math.min((session.currentIndex ?? 0) + 1, session.questionCount - 1)
-        : (session.currentIndex ?? 0);
-      if (nextIndex !== session.currentIndex) {
-        await ctx.db.patch(sessionId, { currentIndex: nextIndex });
-      }
-    }
+    // O cursor só se move via navigateTo — a correção imediata precisa
+    // continuar visível na questão recém-respondida.
 
     // Contadores desnormalizados.
     let answeredDelta = 0;
@@ -663,6 +665,32 @@ export const skipQuestion = mutation({
         isCorrect: undefined,
         answeredAt: undefined,
       });
+    }
+    return { ok: true as const };
+  },
+});
+
+/** Navegação: move o cursor server-side. Sem volta, só a corrente é permitida. */
+export const navigateTo = mutation({
+  args: { sessionId: v.id("studySessions"), position: v.number() },
+  handler: async (ctx, { sessionId, position }) => {
+    const session = await requireOwnedSession(ctx, sessionId);
+    if (session.status === "paused") {
+      throw new Error("Sessão pausada — retome antes de navegar.");
+    }
+    if (session.status !== "in_progress" && session.status !== "created") {
+      throw new Error("Sessão já finalizada");
+    }
+    if (position < 0 || position >= session.questionCount) {
+      throw new Error("Questão fora do intervalo da sessão");
+    }
+    // Sem volta: só a corrente ou a próxima são alcançáveis.
+    const current = session.currentIndex ?? 0;
+    if (!session.allowBackNavigation && position !== current && position !== current + 1) {
+      throw new Error("Nesta sessão você segue a ordem — não é possível voltar.");
+    }
+    if (position !== current) {
+      await ctx.db.patch(sessionId, { currentIndex: position });
     }
     return { ok: true as const };
   },

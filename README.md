@@ -27,7 +27,8 @@ Comandos úteis:
 bun tsc -b --noEmit          # typecheck completo
 bun convex dev --once        # codegen + deploy das funções Convex
 bun run lint                 # eslint
-bun test                     # testes unitários (vitest)
+bun run test                 # testes unitários (vitest)
+bun run build                # typecheck + build de produção
 ```
 
 > A plataforma Freebuff executa o dev server e o `convex dev` em sessões
@@ -39,15 +40,34 @@ bun test                     # testes unitários (vitest)
   autenticadas em `/app/*` com retorno (`?returnTo=`) preservado.
 - **Catálogo de exames** — exames → edições (ano + fase) → questões. O catálogo
   inicial traz o ENEM (conteúdo `[DEMO]` claramente rotulado).
-- **Study Session** — um único motor para todos os modos:
-  - `custom` (treino rápido ou por matéria, com feedback imediato);
-  - `daily` (aquecimento determinístico por seed: erros recentes + novas fáceis);
-  - `exam` (prova da edição, ordem original, correção só no final);
-  - fontes especiais: `errors` (caderno de erros) e `favorites`.
-- **Question player** — correção imediata com gabarito; no modo prova:
-  navegador de questões, marcações, tempo e confirmação antes de finalizar.
-- **Resultados** — acertos/erros/brancos, percentual, tempo e desempenho por
-  matéria.
+- **Study Session Engine** — um único motor para todos os modos; a diferença
+  entre eles é configuração, não código:
+  - **Questões rápidas** (`custom`) — aleatórias, com ou sem filtro de matéria;
+  - **Estudar assunto** (`custom`) — área → matéria → tópico → subassunto;
+  - **Questões do dia** (`daily`) — aquecimento determinístico por seed;
+  - **Treinar erros** (`error_review`) — questões do caderno de erros;
+  - **Revisar favoritos** (`favorites`);
+  - **Simulado** (`simulation`) — aleatório, tempo total, correção só no final,
+    marcação para revisão;
+  - **Fazer prova** (`exam`) — edição específica, ordem original da prova.
+  Configurações comuns: feedback imediato/no final, cronômetro (nenhum/tempo
+  total/tempo por questão), ordem original/aleatória (definida na criação e
+  estável para sempre), permitir voltar, permitir pausar, quantidade (5–90).
+- **Snapshot da sessão** — a sessão grava a relação ordenada
+  sessão↔questões (`studySessionQuestions`); navegar, retomar e revisar nunca
+  re-executam filtros. Se o filtro devolve menos que o pedido, a criação
+  avisa ("Encontramos apenas N…") e oferece começar com o disponível.
+- **Question player** — correção imediata (✓/✗ + gabarito + explicação) no
+  modo estudo; no modo prova: navegador ✓/—/🔖, marcações persistidas no
+  servidor, tempo real que sobrevive a reload, pausa real e confirmação com
+  resumo antes de finalizar.
+- **Resultado e revisão** — acertos/erros/brancos/marcadas, percentual,
+  tempo e desempenho por matéria; revisão questão a questão (escolhida vs.
+  correta + explicação) e botão **Treinar meus erros** que cria uma sessão
+  `error_review` com as questões erradas.
+- **Histórico** — `/app/history` lista todas as sessões (tipo, data, quantidade,
+  acertos, aproveitamento, duração, status) com **Continuar** para retomar
+  sessões em andamento no ponto exato.
 - **Caderno de erros** — registro automático a cada erro; acertar depois marca
   como resolvida; é possível "treinar erros" em sessão dedicada.
 - **Favoritos** — salvar/remover durante o treino e treinar apenas favoritos.
@@ -119,7 +139,8 @@ a importação. Nenhum conteúdo real é incluído sem fonte registrada — ver
 src/
   components/       # AppShell, DemoSeedButton, ui/ (shadcn)
   convex/           # backend: schema + domínios
-    lib/            # sessionBuilder (motor de sessões), stats (XP/streak)
+    lib/            # sessionCore (puro), sessionBuilder (seleção),
+                    # sessionTransactions (persistência), stats, validações
     schema.ts       # modelo de dados completo
   pages/            # rotas (Landing, Auth, Dashboard, Questions, …)
   hooks/            # use-auth, use-mobile

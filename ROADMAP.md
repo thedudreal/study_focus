@@ -27,11 +27,29 @@ genérico de exames/taxonomia; motor único de sessões.
 - [x] Seed de demonstração [DEMO] ENEM (24 questões, 8 matérias)
 - [x] Typecheck limpo (`tsc -b --noEmit`) e deploy Convex OK
 
-## Fase 2 — Simulados avançados
-- [ ] Timer por questão e tempo total configurável (campo já existe na sessão)
-- [ ] Navegação livre entre questões no modo prova (pular/voltar)
-- [ ] Retomada de prova com estado exato (marcações persistidas no servidor)
+## Fase 2 — Study Session Engine ✅ (esta entrega)
+- [x] Tipos de sessão: `single_question`, `custom`, `daily`, `error_review`,
+      `favorites`, `review`, `simulation`, `exam` — um único motor, a
+      diferença é configuração
+- [x] Status completos: `created|in_progress|paused|completed|abandoned`
+- [x] Snapshot `studySessionQuestions` (posição estável, status por questão,
+      marcação para revisão persistida no servidor)
+- [x] Timer real no servidor: nenhum / tempo total / tempo por questão;
+      cronômetro sobrevive a reload e finaliza automaticamente ao esgotar
+- [x] Pausa real (acumula tempo pausado) e abandono preservando progresso
+- [x] Navegação controlada por configuração (com ou sem voltar) via cursor
+      server-side (`navigateTo`)
+- [x] Garantia de quantidade na criação ("Encontramos apenas N…") e somente
+      questões `PUBLISHED` em sessões de aluno
+- [x] Player: correção imediata vs. correção no final, navegador ✓/—/🔖 com
+      ícones + aria-label (não só cor), resumo antes de finalizar
+- [x] Resultado detalhado: por matéria + revisão questão a questão (escolhida
+      vs. correta + explicação) e "Treinar meus erros" (sessão `error_review`)
+- [x] Histórico de sessões (`/app/history`) com retomada do ponto exato
+- [x] Resposta persiste em `questionAttempts` (único histórico, sem duplicar)
+- [x] Posse validada no backend em toda leitura/escrita (equivalente RLS)
 - [ ] Resultado por tópico e por dificuldade (além de matéria)
+- [ ] Timer por questão aplicado no player (schema e política prontos)
 
 ## Fase 3 — Banco de questões + importação ✅ (esta entrega)
 - [x] Tabela normalizada de alternativas (`questionOptions`) com regra
@@ -65,7 +83,8 @@ genérico de exames/taxonomia; motor único de sessões.
 ## Fase 5 — Escala e qualidade
 - [ ] Paginação real em busca (cursor opaco já implementado; migrar p/
       `paginate` nativo do Convex quando o catálogo crescer)
-- [ ] Testes automatizados dos fluxos críticos (sessão, correção, permissões)
+- [x] Testes automatizados dos fluxos críticos (sessão, correção, permissões) —
+      71 testes unitários do motor de sessão e seleção; e2e ainda pendente
 - [ ] Monitoramento de erros e performance de queries
 - [ ] Acessibilidade: auditoria WCAG completa
 

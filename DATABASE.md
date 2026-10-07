@@ -60,16 +60,33 @@ Arquivo único de verdade: `src/convex/schema.ts`.
   automaticamente.**
 
 ### Study Sessions
-- `studySessions` — `userId`, `type` (`custom|daily|exam`), `feedbackMode`
-  (`immediate|end`), filtros usados (`examId`, `editionId`, `subjectId`),
-  `questionCount`, `questionIds[]` (ordem de resposta), `source`
-  (`errors|favorites`), `dailyKind`, `timerSeconds`, `status`
-  (`active|completed|abandoned`), `currentIndex`, `answers[]`
-  (`questionId`, `selectedLetter`, `isCorrect`, `timeSpentSeconds`, `flagged`),
-  `startedAt`, `completedAt`.
-  Índice: `by_user_status`.
+- `studySessions` — a sessão em si (config + progresso):
+  - identidade: `userId`, `type`
+    (`single_question|custom|daily|error_review|favorites|review|simulation|exam`),
+    `title`, `status` (`created|in_progress|paused|completed|abandoned`);
+  - configuração: `feedbackMode` (`immediate|end`), `timerMode`
+    (`none|total|per_question`), `totalTimeSeconds`, `perQuestionSeconds`,
+    `orderMode` (`original|random`), `allowBackNavigation`, `allowPause`,
+    `seed` (ordem aleatória estável), filtros (`examId`, `editionId`,
+    `subjectId`, `topicId`, `subtopicId`, `difficulty`, `questionCount`,
+    `source`, `dailyKind`);
+  - progresso: `questionCount`, `answeredCount`, `correctCount`,
+    `incorrectCount` (desnormalizados), `currentIndex` (cursor server-side),
+    `timerSeconds`, `pausedAccumSeconds`, `lastPausedAt`, `startedAt`,
+    `completedAt`.
+  Índices: `by_user_status`, `by_user_created`.
   **Conceito central**: prova, simulado, treino, questões do dia, erros e
   favoritos são registros nesta tabela, não sistemas à parte.
+
+### Snapshot da sessão
+- `studySessionQuestions` — relação ordenada sessão↔questões. Campos:
+  `sessionId`, `questionId`, `position`, `status`
+  (`pending|answered|skipped`), `selectedLetter`, `isCorrect`,
+  `timeSpentSeconds`, `markedForReview`, `answeredAt`.
+  Índice: `by_session_position (sessionId, position)`.
+  A ordem é definida na criação e **nunca muda**; navegação, marcação,
+  retomada e revisão leem o snapshot — nunca re-executam filtros. Deletar a
+  questão publicada não quebra a sessão concluída (o histórico sobrevive).
 
 ### Registro de estudo
 - `questionAttempts` — uma linha por resposta persistida: `userId`,
@@ -103,10 +120,20 @@ Arquivo único de verdade: `src/convex/schema.ts`.
   backend (`requireAdmin` em `adminQuestions.ts` e `importCsv.ts`).
 - `writeQuestionWithOptions` é o único caminho que grava questão + sincroniza
   as alternativas em `questionOptions` (delete + reinsert atômico na mutation).
-- `persistAttempt` (studySessions) é o único caminho que grava
+- `persistAttempt` (lib/sessionTransactions) é o único caminho que grava
   `questionAttempts` + `errorBook` + `dailyAnswers` + `userStats`, garantindo
   consistência entre os agregados.
 - Modo prova persiste tentativas em bloco no `finishSession`.
+- **Gabarito nunca vaza**: `getSessionState` só envia `correctLetter`/
+  `explanation` no modo estudo, e `isCorrect` só de questões já respondidas;
+  no modo prova o resultado só é calculado após finalizar.
+- **Timer real**: `elapsedSeconds` é derivado no servidor de
+  `startedAt − pausedAccumSeconds` (usando `lastPausedAt` quando pausado).
+  Pausa acumula o tempo pausado no `resumeSession`; reload não reseta o
+  cronômetro.
+- **Cursor server-side**: `navigateTo` move `currentIndex` respeitando
+  `allowBackNavigation`; sem volta, só a corrente ou a próxima são alcançáveis.
+  Responder não move o cursor — a correção imediata permanece visível.
 - Transições de status seguem o fluxo editorial: `draft → review → published`
   (com volta para draft e arquivamento em qualquer ponto). Publicar revalida a
   questão — questão quebrada não publica.

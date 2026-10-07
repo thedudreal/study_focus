@@ -28,12 +28,37 @@ integrados ao build e ao deploy. Autenticação e autorização são garantidas 
 para Postgres é viável: o schema está documentado em `DATABASE.md`.
 
 ### 2. Um só motor de Study Session
-Simulado, prova, questões do dia, treino de erros e favoritos **não** são
-sistemas separados. `studySessions` guarda tipo, modo de feedback e o array
-ordenado de questões; a diferença está em *como* as questões são escolhidas
-(`lib/sessionBuilder.ts`) e *quando* o gabarito é revelado (`immediate` vs.
-`end`). Novos modos (revisão espaçada, desafio) são novos seletores, não novas
-telas.
+Simulado, prova, questões do dia, treino de erros, favoritos e treino por
+assunto **não** são sistemas separados — todos são registros em `studySessions`
+com configurações diferentes. O motor tem três camadas:
+
+- **`lib/sessionCore.ts` (puro, testável)** — tipos de sessão, status,
+  política padrão por tipo (`SessionPolicy`: feedback, timer, ordem,
+  navegação, pausa), cálculo de resultado (`buildResultCounts`) e helpers de
+  tempo. Sem dependência do Convex.
+- **`lib/sessionBuilder.ts` (seleção)** — escolhe as questões: somente
+  `PUBLISHED` e válidas, com garantia de quantidade (devolve o que existe —
+  a UI avisa "Encontramos apenas N…"), ordem definida **na criação** via seed
+  PRNG (`RANDOM`) ou ordem original da prova (`ORIGINAL`), sem duplicatas.
+  A prévia (`previewSelection`) usa a mesma função — nunca sorteia na UI.
+- **`studySessions.ts` (API do motor)** — criação com snapshot
+  (`studySessionQuestions` com `position` estável), resposta
+  (`answerQuestion` — persistência imediata no modo estudo, em bloco no
+  `finishSession` no modo prova), navegação server-side (`navigateTo`
+  respeitando `allowBackNavigation`), marcação para revisão, pausa real
+  (`pausedAccumSeconds`/`lastPausedAt` — o relógio é derivado do servidor,
+  sobrevive a reload), abandono preservando progresso, finalização com
+  resumo, resultado detalhado por questão, histórico e retomada
+  (`listHistory`, `getActiveSession`), e "treinar erros"
+  (`retryErrorsSession` cria sessão `error_review`).
+
+A diferença entre os modos está em *como* as questões são escolhidas e
+*quando* o gabarito é revelado (`immediate` vs. `end`) — nunca em telas
+novas. **Adicionar um novo tipo de sessão** = 1) incluir o valor no union do
+schema e em `SESSION_TYPE_LABEL`/política em `sessionCore.ts`; 2) um seletor
+de questões em `sessionBuilder.ts` (ou reuso dos existentes); 3) uma entrada
+no formulário de criação (`CreateSession.tsx`) quando fizer sentido. Player,
+resultado, histórico e timer já valem para o novo tipo.
 
 ### 3. Determinismo nas questões do dia
 `dailySeed(userId, date)` gera PRNG estável: as mesmas questões aparecem para o

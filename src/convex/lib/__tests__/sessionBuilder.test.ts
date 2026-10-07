@@ -12,7 +12,7 @@ import type { Doc } from "../../_generated/dataModel";
 // ============================================================
 
 function makeQuestion(
-  overrides: Partial<Doc<"questions">> & { _id: string },
+  overrides: Omit<Partial<Doc<"questions">>, "_id"> & { _id: string },
 ): Doc<"questions"> {
   const { _id, ...rest } = overrides;
   return {
@@ -33,7 +33,7 @@ function makeQuestion(
 
 /** selectFromIds usa ctx.db.get(id); simulamos um banco mínimo em memória. */
 function makeCtx(questions: Doc<"questions">[]) {
-  const byId = new Map(questions.map((q) => [q._id, q]));
+  const byId = new Map<string, Doc<"questions">>(questions.map((q) => [q._id as string, q]));
   return {
     db: {
       get: async (id: string) => byId.get(id) ?? null,

@@ -1,6 +1,7 @@
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import type { FunctionReturnType } from "convex/server";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
@@ -32,7 +33,7 @@ import {
 } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const DIFFICULTY_LABEL: Record<string, string> = {
   easy: "fácil",
@@ -40,23 +41,13 @@ const DIFFICULTY_LABEL: Record<string, string> = {
   hard: "difícil",
 };
 
-/** Cronômetro em tempo real: deriva de Date.now() − timestamps do servidor. */
-function useSessionClock(
-  startedAt: number | undefined,
-  serverNow: number | undefined,
-  pausedAccum: number,
-  paused: boolean,
-): number {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const int = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(int);
-  }, []);
-  if (startedAt === undefined || serverNow === undefined) return 0;
-  const skew = Date.now() - serverNow; // relógio local vs. servidor
-  const raw = Math.round((now - startedAt - skew) / 1000) - pausedAccum;
-  return Math.max(0, raw);
-}
+// Payloads derivados da própria query — nada de tipagem manual do motor.
+type SessionStatePayload = NonNullable<
+  FunctionReturnType<typeof api.studySessions.getSessionState>
+>;
+type SessionPayload = NonNullable<SessionStatePayload["session"]>;
+type QuestionPayload = NonNullable<SessionStatePayload["question"]>;
+type QuestionRow = SessionStatePayload["questions"][number];
 
 function formatTime(s: number): string {
   const m = Math.floor(s / 60);
@@ -64,161 +55,119 @@ function formatTime(s: number): string {
   return `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
 }
 
-export default function SessionPlayer() {
-  const { sessionId } = useParams<{ sessionId: string }>();
-  const navigate = useNavigate();
-
-  const [selected, setSelected] = useState<string | null>(null);
-  const [revealed, setRevealed] = useState(false);
-  const [confirming, setConfirming] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [navigating, setNavigating] = useState(false);
-
-  const state = useQuery(
-    api.studySessions.getSessionState,
-    sessionId ? { sessionId: sessionId as Id<"studySessions"> } : "skip",
-  );
-  const answerMutation = useMutation(api.studySessions.answerQuestion);
-  const skipMutation = useMutation(api.studySessions.skipQuestion);
-  const markMutation = useMutation(api.studySessions.setMarkedForReview);
-  const pauseMutation = useMutation(api.studySessions.pauseSession);
-  const resumeMutation = useMutation(api.studySessions.resumeSession);
-  const finishMutation = useMutation(api.studySessions.finishSession);
-  const abandonMutation = useMutation(api.studySessions.abandonSession);
-  const toggleFavorite = useMutation(api.favorites.toggleFavorite);
-
-  const session = state?.session;
-  const question = state?.question;
-  const questionState = state?.questions.find((q) => q.position === session?.currentIndex);
-  const isExamMode = session?.feedbackMode === "end";
-
-  // Cronômetro total (tempo real do servidor, sobrevive a reload)
-  const elapsed = useSessionClock(
-    session?.startedAt,
-    state?.serverNow,
-    session?.pausedAccumSeconds ?? 0,
-    session?.paused ?? false,
-  );
-
-  // Reseta seleção quando a questão corrente muda (remontagem controlada)
+/**
+ * Cronômetro em tempo real e puro: a base (segundos decorridos) vem do
+ * servidor — que já desconta os períodos de pausa — e o tique local soma 1s.
+ * O componente é remontado a cada atualização da query (key={serverNow}),
+ * reancorando a base: sobrevive a reload, respeita pausa e nunca dupla-conta.
+ */
+function SessionClock({
+  base,
+  running,
+  totalLimit,
+  onExpire,
+}: {
+  base: number;
+  running: boolean;
+  totalLimit?: number;
+  onExpire: () => void;
+}) {
+  const [tick, setTick] = useState(0);
   useEffect(() => {
-    setSelected(null);
-    setRevealed(false);
-  }, [session?.currentIndex]);
+    if (!running) return;
+    const int = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(int);
+  }, [running]);
 
-  // Modo total: finaliza automaticamente quando o tempo acaba
-  const totalLimit = session?.timerMode === "total" ? session.totalTimeSeconds : undefined;
+  const elapsed = Math.max(0, base + tick);
   const remaining =
     totalLimit !== undefined ? Math.max(0, totalLimit - elapsed) : null;
-  const timeExpired =
-    remaining !== null && remaining === 0 && !session?.paused &&
-    (session?.status === "in_progress" || session?.status === "created");
 
-  const answeredCount = useMemo(
-    () => state?.questions.filter((q) => q.status === "answered").length ?? 0,
-    [state?.questions],
-  );
-
-  // Auto-finalizar quando o tempo esgota
+  // Tempo total esgotado: finaliza automaticamente (uma única vez).
+  const expiredRef = useRef(false);
   useEffect(() => {
-    if (!timeExpired || !sessionId) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        await finishMutation({ sessionId: sessionId as Id<"studySessions"> });
-        if (!cancelled) navigate(`/app/results/${sessionId}`, { replace: true });
-      } catch {
-        toast.error("Tempo esgotado. Toque em Finalizar para ver o resultado.");
+    if (totalLimit === undefined || !running || expiredRef.current) return;
+    if (remaining !== 0) return;
+    expiredRef.current = true;
+    onExpire();
+  }, [remaining, totalLimit, running, onExpire]);
+
+  const expiring = remaining !== null && remaining <= 60;
+  return (
+    <span
+      className={`font-mono-tech flex items-center gap-1.5 rounded-md px-2 py-1 text-sm ${
+        remaining === null
+          ? "text-muted-foreground"
+          : expiring
+            ? "bg-destructive/15 text-destructive"
+            : "bg-secondary text-muted-foreground"
+      }`}
+      aria-label={
+        remaining === null
+          ? `Tempo decorrido: ${formatTime(elapsed)}`
+          : expiring
+            ? `Restam ${formatTime(remaining)} — tempo acabando`
+            : `Restam ${formatTime(remaining)}`
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timeExpired]);
+    >
+      <Timer className="size-4" aria-hidden />
+      {formatTime(remaining ?? elapsed)}
+    </span>
+  );
+}
 
-  // ---- Estados de interface ----
-  if (state === undefined) {
-    return (
-      <div className="p-10 text-center font-mono-tech text-sm text-muted-foreground">
-        carregando sessão…
-      </div>
-    );
-  }
+/**
+ * Cartão da questão corrente. A seleção e a revelação vivem aqui e o
+ * componente é remontado por key a cada troca de questão — o reset é a
+ * remontagem, sem useEffect (mesmo padrão do AdminQuestionForm).
+ */
+function QuestionArea({
+  session,
+  question,
+  row,
+  currentIndex,
+  isExamMode,
+  isFavorite,
+  submitting,
+  setSubmitting,
+  onAnswer,
+  onSkip,
+  onToggleMark,
+  onToggleFavorite,
+  onNavigate,
+  onFinalize,
+}: {
+  session: SessionPayload;
+  question: QuestionPayload;
+  row: QuestionRow | undefined;
+  currentIndex: number;
+  isExamMode: boolean;
+  isFavorite: boolean;
+  submitting: boolean;
+  setSubmitting: (v: boolean) => void;
+  onAnswer: (letter: string) => Promise<void>;
+  onSkip: () => Promise<void>;
+  onToggleMark: () => Promise<void>;
+  onToggleFavorite: () => Promise<void>;
+  onNavigate: (position: number) => Promise<void>;
+  onFinalize: () => void;
+}) {
+  const [selected, setSelected] = useState<string | null>(null);
+  const [revealed, setRevealed] = useState(false);
 
-  if (state === null || !session) {
-    return (
-      <div className="panel p-10 text-center">
-        <CircleAlert className="mx-auto size-10 text-muted-foreground" />
-        <p className="mt-4 font-semibold">Sessão não encontrada</p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Ela pode ter sido finalizada ou pertence a outro usuário.
-        </p>
-        <Button variant="outline" asChild className="mt-4">
-          <Link to="/app/history">Ver meu histórico</Link>
-        </Button>
-    </div>
-    );
-  }
-
-  if (session.status === "completed") {
-    navigate(`/app/results/${sessionId}`, { replace: true });
-    return null;
-  }
-
-  if (!question) {
-    return (
-      <div className="panel p-10 text-center">
-        <p className="font-semibold">Questão não disponível</p>
-        <Button variant="outline" asChild className="mt-4">
-          <Link to="/app">Voltar ao início</Link>
-        </Button>
-      </div>
-    );
-  }
-
-  const currentIndex = session.currentIndex;
   const total = session.questionCount;
-  const progress = Math.round(((currentIndex + 1) / total) * 100);
-  const answeredRow =
-    session.feedbackMode === "immediate"
-      ? state.questions.find((q) => q.position === currentIndex)
-      : undefined;
-  const answeredHere = questionState?.status === "answered";
-
-  const goTo = async (position: number) => {
-    if (position < 0 || position >= total || position === currentIndex) return;
-    setNavigating(true);
-    try {
-      if (session.paused) await resumeMutation({ sessionId: session._id });
-      // O cursor é server-side: navigar = "marcar corrente". Para manter o
-      // cursor correto, navegamos via answer-resume: reabrimos na posição.
-      await markMutation({
-        sessionId: session._id,
-        position,
-        marked: questionState?.markedForReview ?? false,
-      });
-      toast.info("Navegação registrada. A questão corrente segue a ordem da sessão.");
-    } catch {
-      toast.error("Não foi possível navegar. Tente novamente.");
-    } finally {
-      setNavigating(false);
-    }
-  };
+  const answeredHere = row?.status === "answered";
+  const answeredRow = isExamMode ? undefined : row;
 
   const handleAnswer = async () => {
     if (!selected) return;
     setSubmitting(true);
     try {
-      await answerMutation({
-        sessionId: session._id,
-        position: currentIndex,
-        selectedLetter: selected,
-      });
+      await onAnswer(selected);
       if (!isExamMode) {
         setRevealed(true);
       } else if (currentIndex + 1 >= total) {
-        setConfirming(true);
+        onFinalize();
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao registrar resposta.");
@@ -228,170 +177,11 @@ export default function SessionPlayer() {
   };
 
   const handleNext = () => {
-    if (currentIndex + 1 < total) {
-      // cursor avança server-side ao responder a questão corrente
-      setSelected(null);
-      setRevealed(false);
-      window.location.hash = "";
-    }
+    if (currentIndex + 1 < total) void onNavigate(currentIndex + 1);
   };
-
-  const handleSkip = async () => {
-    try {
-      await skipMutation({ sessionId: session._id, position: currentIndex });
-      toast.info("Questão deixada para depois. Você pode voltar nela.");
-    } catch {
-      toast.error("Não foi possível pular. Tente novamente.");
-    }
-  };
-
-  const handleToggleMark = async () => {
-    try {
-      const next = !(questionState?.markedForReview ?? false);
-      await markMutation({ sessionId: session._id, position: currentIndex, marked: next });
-    } catch {
-      toast.error("Não foi possível marcar. Tente novamente.");
-    }
-  };
-
-  const handlePause = async () => {
-    try {
-      await pauseMutation({ sessionId: session._id });
-      toast.success("Sessão pausada. O cronômetro parou.");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Não foi possível pausar.");
-    }
-  };
-
-  const handleResume = async () => {
-    try {
-      await resumeMutation({ sessionId: session._id });
-    } catch {
-      toast.error("Não foi possível retomar. Tente novamente.");
-    }
-  };
-
-  const handleAbandon = async () => {
-    try {
-      await abandonMutation({ sessionId: session._id });
-      toast.info("Sessão abandonada. Seu progresso permanece salvo.");
-      navigate("/app/history");
-    } catch {
-      toast.error("Não foi possível abandonar. Tente novamente.");
-    }
-  };
-
-  const handleToggleFavorite = async () => {
-    try {
-      await toggleFavorite({ questionId: question._id });
-    } catch {
-      toast.error("Não foi possível favoritar. Tente novamente.");
-    }
-  };
-
-  const markedCount = state.questions.filter((q) => q.markedForReview).length;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      {/* Barra superior */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <span className="chip border-primary/40 text-primary">
-            {session.title}
-          </span>
-          <span className="font-mono-tech text-sm text-muted-foreground">
-            {currentIndex + 1} / {total}
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          {totalLimit !== undefined && remaining !== null ? (
-            <span
-              className={`font-mono-tech flex items-center gap-1.5 rounded-md px-2 py-1 text-sm ${
-                remaining <= 60
-                  ? "bg-destructive/15 text-destructive"
-                  : "bg-secondary text-muted-foreground"
-              }`}
-              aria-label={
-                remaining <= 60
-                  ? `Restam ${formatTime(remaining)} — tempo acabando`
-                  : `Restam ${formatTime(remaining)}`
-              }
-            >
-              <Timer className="size-4" aria-hidden />
-              {formatTime(remaining)}
-            </span>
-          ) : (
-            <span className="font-mono-tech flex items-center gap-1.5 text-sm text-muted-foreground">
-              <Timer className="size-4" aria-hidden />
-              {formatTime(elapsed)}
-            </span>
-          )}
-          {session.allowPause &&
-            (session.paused ? (
-              <Button size="sm" variant="outline" onClick={handleResume}>
-                <Play className="size-3.5" />
-                Retomar
-              </Button>
-            ) : (
-              <Button size="sm" variant="ghost" onClick={handlePause}>
-                <Pause className="size-3.5" />
-                Pausar
-              </Button>
-            ))}
-        </div>
-      </div>
-
-      <Progress value={progress} className="h-1" />
-
-      {/* Navegador de questões: ✓ respondida · — pendente · 🔖 marcada */}
-      <nav aria-label="Navegar entre questões" className="flex flex-wrap gap-1.5">
-        {state.questions.map((q) => {
-          const answered = q.status === "answered";
-          const isCurrent = q.position === currentIndex;
-          const skipped = q.status === "skipped";
-          const canGo =
-            session.allowBackNavigation ||
-            q.position === currentIndex ||
-            q.position === currentIndex + 1;
-          const nav = (
-            <button
-              key={q.position}
-              type="button"
-              onClick={() => {
-                if (canGo) {
-                  toast.info(
-                    "A navegação entre questões mantém a ordem da sessão. Continue respondendo para avançar.",
-                  );
-                } else {
-                  toast.error("Esta sessão não permite voltar em questões já passadas.");
-                }
-              }}
-              aria-label={`Questão ${q.position + 1}${
-                answered ? ", respondida" : skipped ? ", deixada para depois" : ", não respondida"
-              }${q.markedForReview ? ", marcada para revisão" : ""}${isCurrent ? ", atual" : ""}`}
-              aria-current={isCurrent ? "true" : undefined}
-              className={`font-mono-tech flex size-8 items-center justify-center rounded text-xs transition-colors ${
-                isCurrent
-                  ? "bg-primary text-primary-foreground"
-                  : answered
-                    ? "bg-primary/15 text-primary"
-                    : skipped
-                      ? "bg-secondary text-muted-foreground/60"
-                      : "bg-secondary text-muted-foreground"
-              } ${q.markedForReview ? "ring-1 ring-chart-4" : ""} ${
-                canGo ? "hover:bg-primary/25" : "cursor-not-allowed opacity-70"
-              }`}
-            >
-              {q.position + 1}
-              {q.markedForReview && <Bookmark className="absolute ml-3 size-3 fill-chart-4 text-chart-4" />}
-              <span className="sr-only">{answered ? "✓" : skipped ? "—" : ""}</span>
-            </button>
-          );
-          return nav;
-        })}
-      </nav>
-
-      {/* Questão */}
+    <>
       <article className="panel p-6 sm:p-8">
         {/* Metadados */}
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -418,7 +208,7 @@ export default function SessionPlayer() {
 
         {/* Alternativas */}
         <RadioGroup
-          value={selected ?? (answeredHere ? questionState?.selectedLetter : "") ?? ""}
+          value={selected ?? (answeredHere ? row?.selectedLetter : "") ?? ""}
           onValueChange={(v) => {
             if (revealed || answeredHere) return;
             setSelected(v);
@@ -427,7 +217,7 @@ export default function SessionPlayer() {
           disabled={revealed || submitting || answeredHere || session.paused}
         >
           {question.alternatives.map((alt) => {
-            const isSelected = (selected ?? questionState?.selectedLetter) === alt.letter;
+            const isSelected = (selected ?? row?.selectedLetter) === alt.letter;
             const isCorrectPick =
               (revealed || answeredHere) &&
               answeredRow?.isCorrect === true &&
@@ -436,8 +226,7 @@ export default function SessionPlayer() {
               (revealed || answeredHere) &&
               answeredRow?.isCorrect === false &&
               alt.letter === answeredRow?.selectedLetter;
-            const isRightAnswer =
-              revealed && alt.letter === question.correctLetter;
+            const isRightAnswer = revealed && alt.letter === question.correctLetter;
             return (
               <Label
                 key={alt.letter}
@@ -454,11 +243,7 @@ export default function SessionPlayer() {
                           : "border-border hover:border-primary/40"
                 } ${revealed || answeredHere ? "cursor-default" : ""}`}
               >
-                <RadioGroupItem
-                  id={`alt-${alt.letter}`}
-                  value={alt.letter}
-                  className="mt-0.5"
-                />
+                <RadioGroupItem id={`alt-${alt.letter}`} value={alt.letter} className="mt-0.5" />
                 <span className="font-mono-tech mt-0.5 text-sm font-semibold">{alt.letter}</span>
                 <span className="flex-1 text-sm leading-relaxed">{alt.text}</span>
                 {isCorrectPick && <CheckCircle2 className="size-4 shrink-0 text-chart-3" />}
@@ -472,7 +257,7 @@ export default function SessionPlayer() {
         </RadioGroup>
 
         {/* Correção imediata (modo estudo) */}
-        {isExamMode === false && answeredRow && (
+        {!isExamMode && answeredRow && (
           <div
             className={`mt-6 rounded-lg border p-4 ${
               answeredRow.isCorrect
@@ -542,33 +327,33 @@ export default function SessionPlayer() {
               </Button>
             )}
             {!isExamMode && (
-              <Button variant="outline" onClick={handleToggleFavorite} className="gap-1.5">
-                <Star className={`size-4 ${state.isFavorite ? "fill-chart-4 text-chart-4" : ""}`} />
-                {state.isFavorite ? "Favoritada" : "Favoritar"}
+              <Button variant="outline" onClick={onToggleFavorite} className="gap-1.5">
+                <Star className={`size-4 ${isFavorite ? "fill-chart-4 text-chart-4" : ""}`} />
+                {isFavorite ? "Favoritada" : "Favoritar"}
               </Button>
             )}
           </div>
 
           <div className="flex items-center gap-2">
             {!isExamMode && !answeredHere && (
-              <Button variant="ghost" size="sm" onClick={handleSkip} disabled={submitting}>
+              <Button variant="ghost" size="sm" onClick={onSkip} disabled={submitting}>
                 <SkipForward className="size-4" />
                 Pular
               </Button>
             )}
             <Button
-              variant={questionState?.markedForReview ? "secondary" : "outline"}
+              variant={row?.markedForReview ? "secondary" : "outline"}
               size="sm"
-              onClick={handleToggleMark}
-              aria-pressed={questionState?.markedForReview ?? false}
+              onClick={onToggleMark}
+              aria-pressed={row?.markedForReview ?? false}
             >
               <Bookmark
-                className={`size-4 ${questionState?.markedForReview ? "fill-chart-4 text-chart-4" : ""}`}
+                className={`size-4 ${row?.markedForReview ? "fill-chart-4 text-chart-4" : ""}`}
               />
-              {questionState?.markedForReview ? "Marcada" : "Marcar revisão"}
+              {row?.markedForReview ? "Marcada" : "Marcar revisão"}
             </Button>
             {isExamMode && (
-              <Button onClick={() => setConfirming(true)} variant="outline">
+              <Button onClick={onFinalize} variant="outline">
                 <Flag className="size-4" />
                 Finalizar prova
               </Button>
@@ -591,7 +376,7 @@ export default function SessionPlayer() {
               <ArrowRight className="size-4" />
             </Button>
             {currentIndex + 1 >= total && (
-              <Button onClick={() => setConfirming(true)} className="glow-primary">
+              <Button onClick={onFinalize} className="glow-primary">
                 <Flag className="size-4" />
                 Finalizar
               </Button>
@@ -599,6 +384,271 @@ export default function SessionPlayer() {
           </div>
         </div>
       )}
+    </>
+  );
+}
+
+export default function SessionPlayer() {
+  const { sessionId } = useParams<{ sessionId: string }>();
+  const navigate = useNavigate();
+
+  const [confirming, setConfirming] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const state = useQuery(
+    api.studySessions.getSessionState,
+    sessionId ? { sessionId: sessionId as Id<"studySessions"> } : "skip",
+  );
+  const answerMutation = useMutation(api.studySessions.answerQuestion);
+  const navigateMutation = useMutation(api.studySessions.navigateTo);
+  const skipMutation = useMutation(api.studySessions.skipQuestion);
+  const markMutation = useMutation(api.studySessions.setMarkedForReview);
+  const pauseMutation = useMutation(api.studySessions.pauseSession);
+  const resumeMutation = useMutation(api.studySessions.resumeSession);
+  const finishMutation = useMutation(api.studySessions.finishSession);
+  const abandonMutation = useMutation(api.studySessions.abandonSession);
+  const toggleFavorite = useMutation(api.favorites.toggleFavorite);
+
+  const session = state?.session;
+  const question = state?.question;
+  const currentIndex = session?.currentIndex ?? 0;
+  const row = state?.questions.find((q) => q.position === currentIndex);
+  const isExamMode = session?.feedbackMode === "end";
+  const answeredCount =
+    state?.questions.filter((q) => q.status === "answered").length ?? 0;
+  const markedCount = state?.questions.filter((q) => q.markedForReview).length ?? 0;
+
+  // ---- Estados de interface ----
+  if (state === undefined) {
+    return (
+      <div className="p-10 text-center font-mono-tech text-sm text-muted-foreground">
+        carregando sessão…
+      </div>
+    );
+  }
+
+  if (state === null || !session) {
+    return (
+      <div className="panel p-10 text-center">
+        <CircleAlert className="mx-auto size-10 text-muted-foreground" />
+        <p className="mt-4 font-semibold">Sessão não encontrada</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Ela pode ter sido finalizada ou pertence a outro usuário.
+        </p>
+        <Button variant="outline" asChild className="mt-4">
+          <Link to="/app/history">Ver meu histórico</Link>
+        </Button>
+      </div>
+    );
+  }
+
+  if (session.status === "completed") {
+    navigate(`/app/results/${sessionId}`, { replace: true });
+    return null;
+  }
+
+  if (!question) {
+    return (
+      <div className="panel p-10 text-center">
+        <p className="font-semibold">Questão não disponível</p>
+        <Button variant="outline" asChild className="mt-4">
+          <Link to="/app">Voltar ao início</Link>
+        </Button>
+      </div>
+    );
+  }
+
+  const total = session.questionCount;
+  const progress = Math.round(((currentIndex + 1) / total) * 100);
+  const totalLimit =
+    session.timerMode === "total" ? (session.totalTimeSeconds ?? undefined) : undefined;
+  const running =
+    !session.paused && (session.status === "in_progress" || session.status === "created");
+
+  // ---- Handlers ----
+  const handleAnswer = async (selectedLetter: string) => {
+    await answerMutation({
+      sessionId: session._id,
+      position: currentIndex,
+      selectedLetter,
+    });
+    // Prova sequencial: avança direto para a próxima após confirmar.
+    if (isExamMode && !session.allowBackNavigation && currentIndex + 1 < total) {
+      await navigateMutation({ sessionId: session._id, position: currentIndex + 1 });
+    }
+  };
+
+  const handleNavigate = async (position: number) => {
+    if (position === currentIndex) return;
+    try {
+      await navigateMutation({ sessionId: session._id, position });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Não foi possível navegar.");
+    }
+  };
+
+  const handleSkip = async () => {
+    try {
+      await skipMutation({ sessionId: session._id, position: currentIndex });
+      toast.info("Questão deixada para depois. Você pode voltar nela.");
+    } catch {
+      toast.error("Não foi possível pular. Tente novamente.");
+    }
+  };
+
+  const handleToggleMark = async () => {
+    try {
+      const next = !(row?.markedForReview ?? false);
+      await markMutation({ sessionId: session._id, position: currentIndex, marked: next });
+    } catch {
+      toast.error("Não foi possível marcar. Tente novamente.");
+    }
+  };
+
+  const handleToggleFavorite = async () => {
+    try {
+      await toggleFavorite({ questionId: question._id });
+    } catch {
+      toast.error("Não foi possível favoritar. Tente novamente.");
+    }
+  };
+
+  const handleTimeExpired = async () => {
+    try {
+      await finishMutation({ sessionId: session._id });
+      navigate(`/app/results/${session._id}`, { replace: true });
+    } catch {
+      toast.error("Tempo esgotado. Toque em Finalizar para ver o resultado.");
+    }
+  };
+
+  const handlePause = async () => {
+    try {
+      await pauseMutation({ sessionId: session._id });
+      toast.success("Sessão pausada. O cronômetro parou.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Não foi possível pausar.");
+    }
+  };
+
+  const handleResume = async () => {
+    try {
+      await resumeMutation({ sessionId: session._id });
+    } catch {
+      toast.error("Não foi possível retomar. Tente novamente.");
+    }
+  };
+
+  const handleAbandon = async () => {
+    try {
+      await abandonMutation({ sessionId: session._id });
+      toast.info("Sessão abandonada. Seu progresso permanece salvo.");
+      navigate("/app/history");
+    } catch {
+      toast.error("Não foi possível abandonar. Tente novamente.");
+    }
+  };
+
+  return (
+    <div className="mx-auto max-w-3xl space-y-6">
+      {/* Barra superior */}
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <span className="chip border-primary/40 text-primary">{session.title}</span>
+          <span className="font-mono-tech text-sm text-muted-foreground">
+            {currentIndex + 1} / {total}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <SessionClock
+            key={state.serverNow}
+            base={session.elapsedSeconds}
+            running={running}
+            totalLimit={totalLimit}
+            onExpire={handleTimeExpired}
+          />
+          {session.allowPause &&
+            (session.paused ? (
+              <Button size="sm" variant="outline" onClick={handleResume}>
+                <Play className="size-3.5" />
+                Retomar
+              </Button>
+            ) : (
+              <Button size="sm" variant="ghost" onClick={handlePause}>
+                <Pause className="size-3.5" />
+                Pausar
+              </Button>
+            ))}
+        </div>
+      </div>
+
+      <Progress value={progress} className="h-1" />
+
+      {/* Navegador de questões: ✓ respondida · — pendente · 🔖 marcada */}
+      <nav aria-label="Navegar entre questões" className="flex flex-wrap gap-1.5">
+        {state.questions.map((q) => {
+          const answered = q.status === "answered";
+          const isCurrent = q.position === currentIndex;
+          const skipped = q.status === "skipped";
+          const canGo =
+            session.allowBackNavigation ||
+            q.position === currentIndex ||
+            q.position === currentIndex + 1;
+          return (
+            <button
+              key={q.position}
+              type="button"
+              onClick={() => {
+                if (!canGo) {
+                  toast.error("Esta sessão não permite voltar em questões já passadas.");
+                  return;
+                }
+                void handleNavigate(q.position);
+              }}
+              aria-label={`Questão ${q.position + 1}${
+                answered ? ", respondida" : skipped ? ", deixada para depois" : ", não respondida"
+              }${q.markedForReview ? ", marcada para revisão" : ""}${isCurrent ? ", atual" : ""}`}
+              aria-current={isCurrent ? "true" : undefined}
+              className={`font-mono-tech relative flex size-8 items-center justify-center rounded text-xs transition-colors ${
+                isCurrent
+                  ? "bg-primary text-primary-foreground"
+                  : answered
+                    ? "bg-primary/15 text-primary"
+                    : skipped
+                      ? "bg-secondary text-muted-foreground/60"
+                      : "bg-secondary text-muted-foreground"
+              } ${q.markedForReview ? "ring-1 ring-chart-4" : ""} ${
+                canGo ? "hover:bg-primary/25" : "cursor-not-allowed opacity-70"
+              }`}
+            >
+              {q.position + 1}
+              {q.markedForReview && (
+                <Bookmark className="absolute -right-1 -top-1 size-3 fill-chart-4 text-chart-4" />
+              )}
+              <span className="sr-only">{answered ? "✓" : skipped ? "—" : ""}</span>
+            </button>
+          );
+        })}
+      </nav>
+
+      {/* Questão — remontada a cada troca (key) para resetar a seleção */}
+      <QuestionArea
+        key={`${session._id}-${currentIndex}`}
+        session={session}
+        question={question}
+        row={row}
+        currentIndex={currentIndex}
+        isExamMode={isExamMode}
+        isFavorite={state.isFavorite}
+        submitting={submitting}
+        setSubmitting={setSubmitting}
+        onAnswer={handleAnswer}
+        onSkip={handleSkip}
+        onToggleMark={handleToggleMark}
+        onToggleFavorite={handleToggleFavorite}
+        onNavigate={handleNavigate}
+        onFinalize={() => setConfirming(true)}
+      />
 
       {/* Confirmação de finalização (resumo) */}
       <AlertDialog open={confirming} onOpenChange={setConfirming}>
@@ -611,9 +661,8 @@ export default function SessionPlayer() {
                   Questões: <span className="font-mono-tech">{total}</span>
                 </p>
                 <p>
-                  Respondidas: <span className="font-mono-tech">{answeredCount}</span> ·
-                  Não respondidas:{" "}
-                  <span className="font-mono-tech">{total - answeredCount}</span> ·
+                  Respondidas: <span className="font-mono-tech">{answeredCount}</span> · Não
+                  respondidas: <span className="font-mono-tech">{total - answeredCount}</span> ·
                   Marcadas: <span className="font-mono-tech">{markedCount}</span>
                 </p>
                 {isExamMode && <p>O gabarito só será calculado após finalizar.</p>}
@@ -655,8 +704,8 @@ export default function SessionPlayer() {
           <AlertDialogHeader>
             <AlertDialogTitle>Abandonar sessão?</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja sair? O que você já respondeu continua salvo,
-              mas a sessão ficará como abandonada no histórico.
+              Tem certeza que deseja sair? O que você já respondeu continua salvo, mas a sessão
+              ficará como abandonada no histórico.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
