@@ -181,6 +181,96 @@ export const importBatches = defineTable({
   createdBy: v.id("users"),
 }).index("by_status", ["status"]);
 
+// ============================================================
+// DOMÍNIO: IMPORTAÇÃO DE PROVAS EM PDF (painel admin)
+//
+// Fluxo: PDF(s) enviados → extração (action) → questões identificadas →
+// revisão manual → aprovação → publicação. Reutiliza questions/importBatches/
+// sources (dedupe via contentHash) — NÃO cria banco paralelo de questões.
+// ============================================================
+
+/**
+ * Documento PDF da prova (caderno e/ou gabarito), acompanhamento de status
+ * e metadados de direito de uso. O arquivo binário vive no File Storage do
+ * Convex (storageId); esta tabela é o registro/sobre ele.
+ */
+export const examPdfs = defineTable({
+  /** "exam_paper" = caderno de questões; "answer_key" = gabarito oficial. */
+  kind: v.union(v.literal("exam_paper"), v.literal("answer_key")),
+  /** Lote lógico: caderno + gabarito da MESMA prova compartilham o ID. */
+  batchId: v.string(),
+  filename: v.string(),
+  /** Tamanho em bytes (validação: máx. 20 MB no upload). */
+  fileSize: v.number(),
+  /** Referência probrivada ao binário no File Storage do Convex. */
+  storageId: v.id("_storage"),
+  /** Mime type validado no upload (só "application/pdf" aceito). */
+  contentType: v.string(),
+  /** Metadados da prova informados no upload. */
+  institution: v.optional(v.string()),
+  examName: v.optional(v.string()),
+  year: v.optional(v.number()),
+  phase: v.optional(v.string()),
+
+  // DIREITO DE USO — registrado, nunca presumido:
+  sourceUrl: v.optional(v.string()),
+  licenseStatus: v.union(
+    v.literal("pending"),
+    v.literal("authorized"),
+    v.literal("unauthorized"),
+  ),
+  licenseNotes: v.optional(v.string()),
+
+  // PIPELINE: uploaded → processing → extracting → awaiting_review →
+  // completed | failed
+  status: v.union(
+    v.literal("uploaded"),
+    v.literal("processing"),
+    v.literal("extracting"),
+    v.literal("awaiting_review"),
+    v.literal("completed"),
+    v.literal("failed"),
+  ),
+  /** Mensagem do último erro (para "tentar novamente"). */
+  errorMessage: v.optional(v.string()),
+  /** Identificação do tipo de PDF: "text" | "needs_ocr" (digitalizado). */
+  pdfType: v.optional(v.union(v.literal("text"), v.literal("needs_ocr"))),
+  pageCount: v.optional(v.number()),
+  /** Total de caracteres extraídos (0 → provável digitalizado). */
+  extractedChars: v.optional(v.number()),
+  /**
+   * Questões extraídas EM ESTÁGIO (pós-parse, PRÉ-banco). A publicação real
+   * escreve em `questions` via editor admin — nada entra no banco sem
+   * revisão. Cada item guarda hash, página de origem e motivos de revisão.
+   */
+  parsedQuestions: v.optional(
+    v.array(
+      v.object({
+        number: v.number(),
+        statement: v.string(),
+        alternatives: v.array(v.object({ letter: v.string(), text: v.string() })),
+        correctLetter: v.optional(v.string()),
+        startPage: v.number(),
+        contentHash: v.string(),
+        needsReview: v.boolean(),
+        reviewReasons: v.array(v.string()),
+        /** true quando hash idêntico já existe no banco de questões. */
+        duplicateInDb: v.optional(v.boolean()),
+        /** true quando hash repete dentro do próprio arquivo. */
+        duplicateInFile: v.optional(v.boolean()),
+        /** Preenchido ao aprovar: id da questão real criada em `questions`. */
+        createdQuestionId: v.optional(v.id("questions")),
+      }),
+    ),
+  ),
+  createdAt: v.number(),
+  processedAt: v.optional(v.number()),
+  createdBy: v.id("users"),
+})
+  .index("by_batch", ["batchId"])
+  .index("by_status", ["status"])
+  .index("by_created", ["createdAt"]);
+
 export const videos = defineTable({
   title: v.string(),
   url: v.string(),
@@ -400,6 +490,7 @@ const schema = defineSchema(
     questions,
     questionOptions,
     importBatches,
+    examPdfs,
     videos,
     studySessions,
     studySessionQuestions,

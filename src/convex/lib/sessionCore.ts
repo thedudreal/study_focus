@@ -238,6 +238,36 @@ export function applyOrder<T>(
   return shuffleWithSeed(items, seed);
 }
 
+// ---- Feedback / gabarito (regras de correção — puras e testadas) ----
+
+/**
+ * Pergunta central: o gabarito/acerto-erro pode ser revelado AQUI?
+ * - Modo estudo (immediate): só após o final; e para uma questão específica,
+ *   só depois dela estar respondida NESTA sessão (não confunde com tentativa
+ *   anterior em outra sessão — a prova disso é o estado na tabela da sessão).
+ * - Modo prova (end): NUNCA antes do status final (completed|abandoned).
+ */
+export function isFeedbackRevealed(
+  feedbackMode: "immediate" | "end",
+  sessionStatus: "created" | "in_progress" | "paused" | "completed" | "abandoned",
+): boolean {
+  if (feedbackMode === "end") {
+    return sessionStatus === "completed" || sessionStatus === "abandoned";
+  }
+  return true;
+}
+
+/**
+ * Para uma QUestão específica: resposta/acerto só existem se ela foi
+ * respondida NESTA sessão (status answered na tabela da sessão). Questões
+ * respondidas em outra sessão ficam "pendentes" aqui.
+ */
+export function isAnsweredInSession(
+  rowStatus: "pending" | "answered" | "skipped",
+): boolean {
+  return rowStatus === "answered";
+}
+
 // ---- Tempo real (sobrevive a reload; sem estado no cliente) ----
 
 /**

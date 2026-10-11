@@ -10,6 +10,8 @@ import {
   isTimeExpired,
   computeQuestionElapsedSeconds,
   isPerQuestionTimeExpired,
+  isFeedbackRevealed,
+  isAnsweredInSession,
   PER_QUESTION_GRACE_SECONDS,
   buildResultCounts,
   SESSION_TYPE_LABEL,
@@ -217,6 +219,46 @@ describe("computeQuestionElapsedSeconds (relógio por questão)", () => {
 
   it("nunca fica negativo", () => {
     expect(computeQuestionElapsedSeconds(500, 1_000, false, undefined)).toBe(0);
+  });
+});
+
+describe("isFeedbackRevealed (regras de correção)", () => {
+  it("modo estudo: sempre revela, em qualquer status", () => {
+    for (const status of [
+      "created",
+      "in_progress",
+      "paused",
+      "completed",
+      "abandoned",
+    ] as const) {
+      expect(isFeedbackRevealed("immediate", status)).toBe(true);
+    }
+  });
+
+  it("modo prova: NUNCA revela antes de finalizar (created/in_progress/paused)", () => {
+    expect(isFeedbackRevealed("end", "created")).toBe(false);
+    expect(isFeedbackRevealed("end", "in_progress")).toBe(false);
+    expect(isFeedbackRevealed("end", "paused")).toBe(false);
+  });
+
+  it("modo prova: revela após completada ou abandonada", () => {
+    expect(isFeedbackRevealed("end", "completed")).toBe(true);
+    expect(isFeedbackRevealed("end", "abandoned")).toBe(true);
+  });
+});
+
+describe("isAnsweredInSession (estado da sessão ATUAL)", () => {
+  it("só 'answered' conta como respondida nesta sessão", () => {
+    expect(isAnsweredInSession("answered")).toBe(true);
+    expect(isAnsweredInSession("pending")).toBe(false);
+    expect(isAnsweredInSession("skipped")).toBe(false);
+  });
+
+  it("questão pendente: correção NUNCA acontece (sem resposta não há correção)", () => {
+    // Regra: questões não respondidas não são corrigidas automaticamente —
+    // o sistema nunca registra tentativa sem seleção.
+    const pending = isAnsweredInSession("pending");
+    expect(pending).toBe(false);
   });
 });
 

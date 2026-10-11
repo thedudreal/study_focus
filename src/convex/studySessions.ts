@@ -14,6 +14,7 @@ import {
   computeElapsedSeconds,
   computeQuestionElapsedSeconds,
   isPerQuestionTimeExpired,
+  isFeedbackRevealed,
   PER_QUESTION_GRACE_SECONDS,
   SESSION_TYPE_LABEL,
 } from "./lib/sessionCore";
@@ -69,7 +70,9 @@ interface QuestionGroup {
   review: {
     position: number;
     selectedLetter?: string;
-    isCorrect?: boolean;
+    /** Interno: NUNCA exposto ao client diretamente — só via payload
+     *  filtrado por feedbackMode/estado da sessão. */
+    isCorrectInternal?: boolean;
     timeSpentSeconds?: number;
     marked: boolean;
   } | null;
@@ -101,7 +104,9 @@ async function getQuestionGroups(
           ? {
               position: row.position,
               selectedLetter: row.selectedLetter,
-              isCorrect: row.isCorrect,
+              // DADOS SENSÍVEIS: isCorrect só sai daqui em modo estudo e no
+              // momento certo — o payload final filtra (ver getSessionState).
+              isCorrectInternal: row.isCorrect,
               timeSpentSeconds: row.timeSpentSeconds,
               marked: row.markedForReview,
             }
@@ -115,8 +120,9 @@ async function getQuestionGroups(
 /**
  * Snapshot enviado ao client. Nada do gabarito vaza antes da hora:
  * - a letra escolhida só viaja para questões já respondidas;
- * - acerto/erro só no modo estudo — no modo prova o resultado só é
- *   calculado após finalizar (getResultQuestions).
+ * - acerto/erro e gabarito — só no modo estudo, conforme o ESTADO da sessão
+ *   atual (não confunde com tentativa anterior em outra sessão);
+ * - no modo prova, feedback em qualquer forma só existe após finalizar.
  */
 function groupsToStates(
   groups: QuestionGroup[],
@@ -370,7 +376,9 @@ export const getSessionState = query({
     );
     const group = groups[currentIndex];
     const paused = session.status === "paused";
-    const showFeedback = session.feedbackMode === "immediate";
+    // REGRA DE CORREÇÃO (pura, em sessionCore): gabarito/acerto-erro só no
+    // modo estudo, ou no modo prova APÓS o status final — nunca antes.
+    const showFeedback = isFeedbackRevealed(session.feedbackMode, session.status);
 
     const elapsed = paused
       ? computeElapsedSeconds(
@@ -449,7 +457,19 @@ export const getSessionState = query({
       },
       question,
       isFavorite,
-      review: group?.review ?? null,
+      // REVISÃO da questão corrente, filtrada pelo feedback liberado:
+      // - modo estudo: acerto/erro visa só depois de respondida nesta sessão;
+      // - modo prova: NUNCA antes de finalizar (resultado liberado só no fim).
+      review:
+        group?.review === null || !group?.review
+          ? null
+          : {
+              position: group.review.position,
+              selectedLetter: group.review.selectedLetter,
+              isCorrect: showFeedback ? group.review.isCorrectInternal : undefined,
+              timeSpentSeconds: group.review.timeSpentSeconds,
+              marked: group.review.marked,
+            },
       questions: groupsToStates(groups, showFeedback),
     };
   },
@@ -981,9 +1001,9 @@ export const getResultQuestions = query({
     const session = await getOwnedSession(ctx, sessionId);
     if (!session) return null;
 
-    const sessionFinished =
-      session.status === "completed" || session.status === "abandoned";
-    if (!sessionFinished && session.feedbackMode !== "immediate") return null;
+    // Gabarito liberado? Modo prova: só após finalizar; modo estudo: sempre.
+    const reveal = isFeedbackRevealed(session.feedbackMode, session.status);
+    if (!reveal) return null;
 
     const groups = await getQuestionGroups(ctx, sessionId);
     const questions = groups.map((g) => ({
@@ -1011,6 +1031,8 @@ export const getResultQuestions = query({
     }));
 
     return { reveal: true as const, questions };
+    // Modo prova em andamento: null (o gabarito NÃO sai daqui — o cliente
+    // vê "resultado disponível após finalizar").
   },
 });
 

@@ -160,8 +160,12 @@ function QuestionArea({
   const [revealed, setRevealed] = useState(false);
 
   const total = session.questionCount;
+  // "Respondida NESTA sessão" — nunca confunde com tentativa anterior em
+  // outra sessão (a fonte de verdade é o status da linha na sessão atual).
   const answeredHere = row?.status === "answered";
-  const answeredRow = isExamMode ? undefined : row;
+  // Modo prova: a própria linha pode guardar selectedLetter (resposta dada,
+  // correção escondida); modo estudo: a correção aparece conforme server.
+  const answeredRow = isExamMode ? undefined : answeredHere ? row : undefined;
 
   const handleAnswer = async () => {
     if (!selected) return;
