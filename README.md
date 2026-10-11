@@ -101,6 +101,14 @@ explicação e imagem.
 - **Importar CSV** — envio de arquivo (ou colar), prévia com contagens
 (encontradas/válidas/com erros), lista de erros por linha, cancelamento e
 confirmação.
+- **Importar provas** (`/app/admin/import-exams`) — upload de PDF do caderno
+e do gabarito oficial: metadados da prova (instituição, exame, ano, fase,
+URL da fonte e situação de licença), extração de questões (PDFs com texto
+selecionado), prévia com contagens (encontradas / prontas / incompletas /
+duplicatas — dedupe reutiliza o mesmo contentHash do CSV) e publicação
+individual para a fila de revisão. PDF digitalizado (sem texto) é marcado
+`needs_ocr` — não há OCR automático (ver limitações no ROADMAP). Questões
+de licença pendente NÃO publicam.
 
 ### Como importar um CSV
 

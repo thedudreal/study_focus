@@ -76,7 +76,9 @@ export function cleanPdfText(raw: string): string {
  */
 export function parseAnswerKey(raw: string): ParsedAnswerKey {
   const answers = new Map<number, string>();
-  const lineRegex = /(\d{1,3})\s*[-–.]?\s*([A-Ea-e])\b/g;
+  // Separadores comuns em gabaritos oficiais: "1 A", "1-A", "1. A", "1) A",
+  // "1|A". Letra A–E, case-insensitive, independente do separador.
+  const lineRegex = /(\d{1,3})\s*[-–.|)\s]\s*([A-Ea-e])\b/g;
   let m: RegExpExecArray | null;
   while ((m = lineRegex.exec(raw)) !== null) {
     const num = parseInt(m[1], 10);
@@ -96,7 +98,9 @@ export function parseAnswerKey(raw: string): ParsedAnswerKey {
 // ============================================================
 
 const Q_START_RE = /^QUEST(?:ÃO|AO|AO)?\s*(\d{1,3})/i;
-const ALT_RE = /^\(?([A-Ea-e])\)?\s*(.+)$/;
+/** Alternativa exige delimitador: "(A)", "A.", "A)", "A -" — não casa
+ *  palavras comuns que começam com A–E (ex.: "Complete:"). */
+const ALT_RE = /^(?:\(([A-Ea-e])\)|([A-Ea-e])[.)]|([A-Ea-e])\s+-)\s*(.+)$/;
 
 function looksLikeQuestionHeader(line: string): number | null {
   const m = line.match(Q_START_RE);
@@ -155,12 +159,15 @@ export function parseExamQuestions(
     let statementStarted = false;
     for (const item of body) {
         const altMatch = item.line.match(ALT_RE);
-      const localAltLetter = altMatch?.[1].toUpperCase();
+      const localAltLetter = altMatch
+        ? (altMatch[1] ?? altMatch[2] ?? altMatch[3]).toUpperCase()
+        : undefined;
+      const altText = altMatch?.[4];
       const isAlt = localAltLetter && alternatives.every((a) => a.letter !== localAltLetter);
-      if (isAlt && alternatives.length < 5) {
+      if (isAlt && altText && alternatives.length < 5) {
         alternatives.push({
           letter: localAltLetter!,
-          text: altMatch![2].trim(),
+          text: altText.trim(),
         });
         continue;
       }

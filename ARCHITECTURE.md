@@ -110,6 +110,12 @@ searchIndex do Convex. As alternativas vivem em tabela normalizada
 - Nenhum segredo no cliente: integrações ficam em Convex actions (`"use node"`),
   lendo `process.env`.
 - Rotas protegidas por `RequireAuth` com `returnTo` preservado.
+- **Gabarito nunca vaza antecipadamente**: a regra de correção é pura
+  (`isFeedbackRevealed` em `lib/sessionCore.ts`) e aplicada no SERVIDOR —
+  `getSessionState` só envia `correctLetter`/`explanation`/`isCorrect` no modo
+  estudo (ou prova já finalizada); `getResultQuestions` recusa modo prova em
+  andamento; `review.isCorrectInternal` é filtrado no payload. A validação
+  gabarito↔resposta acontece sempre no servidor (`answerQuestion`).
 
 ## Frontend
 
@@ -124,8 +130,23 @@ searchIndex do Convex. As alternativas vivem em tabela normalizada
 ## Extensões futuras (previstas, não implementadas)
 
 - Vídeos: tabela pronta (`videos`), link por questão (`questions.videoId`).
-- Admin: mutations prontas, painel pendente (ver `ROADMAP.md`).
 - Dedupe aproximado (similaridade) sobre o `contentHash` exato já em uso.
+
+## Importação de provas em PDF (painel admin)
+
+- **Pipeline**: upload (File Storage do Convex, máx. 20 MB, dedupe por
+  nome+kind no lote) → action `extractPdf` (runtime Node, biblioteca
+  `unpdf`, MIT, sem OCR) → parser puro `lib/pdfExamParser.ts` segmenta por
+  "QUESTÃO N" + alternativas com delimitador → staged em `examPdfs.parsedQuestions`.
+- **Honestidade**: texto ~0 → `needs_ocr` (digitalizado — OCR NÃO automático);
+  questão sem gabarito/sem alternativas → `needsReview`; nada é inventado.
+- **Gabarito**: PDF separado no mesmo lote; pares "N letra" parseados e
+  pendências sinalizadas; correção manual no editor.
+- **Dedupe**: reutiliza o MESMO `contentHash`/`by_content_hash` do CSV.
+- **Publicação**: `publishParsedQuestion` escreve em `questions` como
+  `review` (nunca published direto), exige `licenseStatus === "authorized"`
+  e matéria escolhida explicitamente na taxonomia existente; aprovação
+  final é a fila de revisão existente (`adminQuestions.setStatus`).
 
 ## Notas complementares
 

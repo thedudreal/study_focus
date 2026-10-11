@@ -9,7 +9,6 @@ import {
   parseExamQuestions,
   parseAnswerKey,
   applyAnswerKey,
-  summarizeImport,
   hashStatement,
 } from "./lib/pdfExamParser";
 
@@ -37,6 +36,15 @@ async function requireAdminId(
 // ============================================================
 // 1. UPLOAD (mutation; o binário vai para o File Storage via client)
 // ============================================================
+
+/** URL de upload direto ao File Storage (o cliente faz POST com o PDF). */
+export const generateUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdminId(ctx);
+    return await ctx.storage.generateUploadUrl();
+  },
+});
 
 /**
  * Registrar o arquivo já enviado ao File Storage. O cliente faz o upload
@@ -267,8 +275,6 @@ export const extractPdf = action({
         duplicateInFile: inFile || undefined,
       });
     }
-
-    const summary = summarizeImport(parsedQuestions);
 
     await ctx.runMutation(api.examPdfs.saveExtracted, {
       examPdfId,

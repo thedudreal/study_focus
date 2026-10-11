@@ -53,6 +53,16 @@ genérico de exames/taxonomia; motor único de sessões.
       no servidor (sobrevive a reload), pausa não consome o tempo, expiração
       marca a questão como "deixada para depois" e avança; resposta tardia
       recusada no backend com tolerância de rede (5s)
+- [x] Correção antecipada corrigida: regra pura `isFeedbackRevealed` no
+      servidor — `review.isCorrect` era exposto cru no payload de
+      `getSessionState` (vazava acerto/erro no modo prova); agora filtrado
+      por feedbackMode/estado; questões não respondidas nunca são corrigidas
+- [x] Importação de provas em PDF (`/app/admin/import-exams`): upload de
+      caderno + gabarito no File Storage, extração com `unpdf` (PDFs com
+      texto), parser com sinalização honesta de incompletas/duplicatas,
+      prévia com contagens, publicação p/ fila de revisão exigindo
+      matéria + licença autorizada; PDF digitalizado → needs_ocr (sem
+      OCR automático)
 
 ## Fase 3 — Banco de questões + importação ✅ (esta entrega)
 - [x] Tabela normalizada de alternativas (`questionOptions`) com regra

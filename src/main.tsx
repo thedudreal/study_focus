@@ -29,6 +29,7 @@ const AdminLayout = lazy(() => import("./pages/admin/AdminLayout.tsx"));
 const AdminQuestions = lazy(() => import("./pages/admin/AdminQuestions.tsx"));
 const AdminQuestionForm = lazy(() => import("./pages/admin/AdminQuestionForm.tsx"));
 const AdminImport = lazy(() => import("./pages/admin/AdminImport.tsx"));
+const AdminExamImport = lazy(() => import("./pages/admin/AdminExamImport.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 // Simple loading fallback for route transitions
@@ -175,6 +176,16 @@ createRoot(document.getElementById("root")!).render(
                   <Protected>
                     <AdminLayout>
                       <AdminImport />
+                    </AdminLayout>
+                  </Protected>
+                }
+              />
+              <Route
+                path="/app/admin/import-exams"
+                element={
+                  <Protected>
+                    <AdminLayout>
+                      <AdminExamImport />
                     </AdminLayout>
                   </Protected>
                 }
