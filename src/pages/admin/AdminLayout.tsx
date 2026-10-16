@@ -6,6 +6,7 @@ const ADMIN_TABS = [
   { to: "/app/admin", label: "Questões", end: true },
   { to: "/app/admin/import", label: "Importar CSV", end: false },
   { to: "/app/admin/import-exams", label: "Importar provas", end: false },
+  { to: "/app/admin/contributions", label: "Contribuições", end: false },
 ];
 
 export default function AdminLayout({ children }: { children: ReactNode }) {

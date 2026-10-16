@@ -30,6 +30,8 @@ const AdminQuestions = lazy(() => import("./pages/admin/AdminQuestions.tsx"));
 const AdminQuestionForm = lazy(() => import("./pages/admin/AdminQuestionForm.tsx"));
 const AdminImport = lazy(() => import("./pages/admin/AdminImport.tsx"));
 const AdminExamImport = lazy(() => import("./pages/admin/AdminExamImport.tsx"));
+const AdminContributions = lazy(() => import("./pages/admin/AdminContributions.tsx"));
+const ContributeExam = lazy(() => import("./pages/ContributeExam.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 // Simple loading fallback for route transitions
@@ -153,6 +155,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="/app/questions/search" element={<Protected><Questions /></Protected>} />
               <Route path="/app/questions/errors" element={<Protected><Errors /></Protected>} />
               <Route path="/app/questions/favorites" element={<Protected><Favorites /></Protected>} />
+              <Route path="/app/questions/contribute" element={<Protected><ContributeExam /></Protected>} />
               <Route path="/app/exams/:examId" element={<Protected><ExamDetail /></Protected>} />
               <Route path="/app/session/:sessionId" element={<Protected><SessionPlayer /></Protected>} />
               <Route path="/app/results/:sessionId" element={<Protected><Results /></Protected>} />
@@ -186,6 +189,16 @@ createRoot(document.getElementById("root")!).render(
                   <Protected>
                     <AdminLayout>
                       <AdminExamImport />
+                    </AdminLayout>
+                  </Protected>
+                }
+              />
+              <Route
+                path="/app/admin/contributions"
+                element={
+                  <Protected>
+                    <AdminLayout>
+                      <AdminContributions />
                     </AdminLayout>
                   </Protected>
                 }

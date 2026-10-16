@@ -9,6 +9,7 @@ import {
   Star,
   ChevronRight,
   Library,
+  FileText,
 } from "lucide-react";
 import { Link } from "react-router";
 import { DemoSeedButton } from "@/components/DemoSeedButton";
@@ -44,6 +45,13 @@ export default function Questions() {
       title: "Favoritos",
       description: "Suas questões salvas",
       badge: favCount,
+    },
+    {
+      to: "/app/questions/contribute",
+      icon: FileText,
+      title: "Enviar prova (PDF)",
+      description:
+        "Tem o PDF de uma prova? Submeta — a análise fria cadastra as questões para o catálogo crescer",
     },
   ];
 

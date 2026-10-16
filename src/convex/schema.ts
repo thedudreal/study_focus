@@ -271,6 +271,107 @@ export const examPdfs = defineTable({
   .index("by_status", ["status"])
   .index("by_created", ["createdAt"]);
 
+// ============================================================
+// DOMÍNIO: CONTRIBUIÇÃO DE PROVA POR USUÁRIO (comunidade → revisão)
+//
+// Qualquer usuário autenticado envia UM PDF (caderno); o sistema faz a
+// triagem fria (questões parseáveis + ano + originalidade. ver
+// lib/examFit.ts). Aceitos ficam registrados como estágio para o admin
+// revisar e categorizar; nada vira questões do site sem aprovação admin.
+// ============================================================
+
+/**
+ * Contribuição de um usuário: 1 PDF de caderno + metadados + resultado
+ * da triagem. O binário vive no File Storage (storageId).
+ */
+export const examContributions = defineTable({
+  userId: v.id("users"),
+  filename: v.string(),
+  fileSize: v.number(),
+  storageId: v.id("_storage"),
+  contentType: v.string(),
+
+  /** Metadados informados pelo usuário (todos opcionais, exceto declaro). */
+  institution: v.optional(v.string()),
+  examName: v.optional(v.string()),
+  year: v.optional(v.number()),
+  phase: v.optional(v.string()),
+  /** URL oficial da fonte (rastreio do direito de uso). */
+  sourceUrl: v.optional(v.string()),
+  /** Declaração do usuário: “sou o autor ou tenho direito de uso”. */
+  attestedUse: v.boolean(),
+
+  /** Avaliação do direito de uso — só o admin muda de “pending”. */
+  licenseStatus: v.union(
+    v.literal("pending"),
+    v.literal("authorized"),
+    v.literal("unauthorized"),
+  ),
+  licenseNotes: v.optional(v.string()),
+
+  // PIPELINE: uploaded → analyzing → analyzed | rejected | failed
+  status: v.union(
+    v.literal("uploaded"),
+    v.literal("analyzing"),
+    v.literal("analyzed"),
+    v.literal("rejected"),
+    v.literal("failed"),
+  ),
+  errorMessage: v.optional(v.string()),
+  pdfType: v.optional(v.union(v.literal("text"), v.literal("needs_ocr"))),
+  pageCount: v.optional(v.number()),
+  extractedChars: v.optional(v.number()),
+
+  /** Resumo da triagem fria (motivos legíveis, o que o usuário vê). */
+  analysis: v.optional(
+    v.object({
+      outcome: v.union(v.literal("accepted"), v.literal("rejected")),
+      rejectionReasons: v.array(v.string()),
+      warnings: v.array(v.string()),
+      year: v.optional(v.number()),
+      yearSource: v.optional(
+        v.union(
+          v.literal("informed_confirmed"),
+          v.literal("inferred"),
+          v.literal("missing"),
+        ),
+      ),
+      found: v.number(),
+      ready: v.number(),
+      duplicateInDb: v.number(),
+      duplicateInFile: v.number(),
+    }),
+  ),
+
+  /**
+   * Questões registradas EM ESTÁGIO (só quando a triagem aceita o conjunto).
+   * O admin categoriza e publica (nunca automático).
+   */
+  parsedQuestions: v.optional(
+    v.array(
+      v.object({
+        number: v.number(),
+        statement: v.string(),
+        alternatives: v.array(v.object({ letter: v.string(), text: v.string() })),
+        correctLetter: v.optional(v.string()),
+        startPage: v.number(),
+        contentHash: v.string(),
+        needsReview: v.boolean(),
+        reviewReasons: v.array(v.string()),
+        duplicateInDb: v.optional(v.boolean()),
+        duplicateInFile: v.optional(v.boolean()),
+        createdQuestionId: v.optional(v.id("questions")),
+      }),
+    ),
+  ),
+
+  createdAt: v.number(),
+  processedAt: v.optional(v.number()),
+})
+  .index("by_user", ["userId"])
+  .index("by_status", ["status"])
+  .index("by_created", ["createdAt"]);
+
 export const videos = defineTable({
   title: v.string(),
   url: v.string(),
@@ -491,6 +592,7 @@ const schema = defineSchema(
     questionOptions,
     importBatches,
     examPdfs,
+    examContributions,
     videos,
     studySessions,
     studySessionQuestions,
