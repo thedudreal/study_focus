@@ -31,6 +31,7 @@ const AdminQuestionForm = lazy(() => import("./pages/admin/AdminQuestionForm.tsx
 const AdminImport = lazy(() => import("./pages/admin/AdminImport.tsx"));
 const AdminExamImport = lazy(() => import("./pages/admin/AdminExamImport.tsx"));
 const AdminContributions = lazy(() => import("./pages/admin/AdminContributions.tsx"));
+const AdminAnswerKeys = lazy(() => import("./pages/admin/AdminAnswerKeys.tsx"));
 const ContributeExam = lazy(() => import("./pages/ContributeExam.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
@@ -199,6 +200,16 @@ createRoot(document.getElementById("root")!).render(
                   <Protected>
                     <AdminLayout>
                       <AdminContributions />
+                    </AdminLayout>
+                  </Protected>
+                }
+              />
+              <Route
+                path="/app/admin/answer-keys"
+                element={
+                  <Protected>
+                    <AdminLayout>
+                      <AdminAnswerKeys />
                     </AdminLayout>
                   </Protected>
                 }

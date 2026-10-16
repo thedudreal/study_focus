@@ -5,8 +5,14 @@ import type { DataModel, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { api } from "./_generated/api";
 import { writeQuestionWithOptions } from "./adminQuestions";
-import { parseExamQuestions, hashStatement } from "./lib/pdfExamParser";
+import { parseExamQuestions, parseAnswerKey, hashStatement } from "./lib/pdfExamParser";
 import { checkYear, assessFit } from "./lib/examFit";
+import {
+  detectExamType,
+  detectPhase,
+  estimateDifficulty,
+} from "./lib/examProfile";
+import { ensureSearchForHash } from "./answerKeys";
 
 /**
  * CONTRIBUIÇÕES DE PROVA POR USUÁRIO (comunidade → revisão admin)
@@ -163,6 +169,15 @@ export const saveAnalysis = mutation({
     ready: v.number(),
     duplicateInDb: v.number(),
     duplicateInFile: v.number(),
+    detectedExamType: v.optional(
+      v.union(
+        v.literal("vestibular"),
+        v.literal("enem"),
+        v.literal("concurso"),
+        v.literal("certification"),
+      ),
+    ),
+    detectedPhase: v.optional(v.string()),
     questions: v.optional(
       v.array(
         v.object({
@@ -178,6 +193,16 @@ export const saveAnalysis = mutation({
           reviewReasons: v.array(v.string()),
           duplicateInDb: v.optional(v.boolean()),
           duplicateInFile: v.optional(v.boolean()),
+          difficulty: v.optional(
+            v.union(v.literal("easy"), v.literal("medium"), v.literal("hard")),
+          ),
+          keySource: v.optional(
+            v.union(
+              v.literal("in_document"),
+              v.literal("provisional"),
+              v.literal("official"),
+            ),
+          ),
         }),
       ),
     ),
@@ -199,6 +224,8 @@ export const saveAnalysis = mutation({
       pdfType: args.pdfType,
       pageCount: args.pageCount,
       extractedChars: args.extractedChars,
+      detectedExamType: args.detectedExamType,
+      detectedPhase: args.detectedPhase,
       // Rejeição NÃO registra questões (o usuário corrige e reenvia).
       parsedQuestions:
         args.outcome === "accepted" ? (args.questions ?? undefined) : undefined,
@@ -302,19 +329,24 @@ export const analyze = action({
       );
     }
 
-    // ----- Originalidade: hash contra o banco e dentro do próprio arquivo.
-    const staged: {
+    /** Estágio: questão parseada + proveniência de gabarito + dificuldade. */
+    type StagedQ = {
       number: number;
       statement: string;
       alternatives: { letter: string; text: string }[];
       correctLetter?: string;
+      keySource?: "in_document" | "provisional" | "official";
+      difficulty?: "easy" | "medium" | "hard";
       startPage: number;
       contentHash: string;
       needsReview: boolean;
       reviewReasons: string[];
       duplicateInDb?: boolean;
       duplicateInFile?: boolean;
-    }[] = [];
+    };
+
+    // ----- Originalidade: hash contra o banco e dentro do próprio arquivo.
+    const staged: StagedQ[] = [];
     const seen = new Set<string>();
     let duplicateInDb = 0;
     let duplicateInFile = 0;
@@ -349,7 +381,51 @@ export const analyze = action({
 
     // ----- Ano: frio — informado precisa constar no texto; senão infere
     // apenas quando há UM único candidato plausível (não inventa).
-    const yearCheck = checkYear(pages.join("\n"), docCtx.year);
+    const fullText = pages.join("\n");
+    const yearCheck = checkYear(fullText, docCtx.year);
+
+    // ----- Identificação: tipo de prova, fase/edição e dificuldade/value
+    // estimada por questão (lib/examProfile.ts, a partir do próprio texto).
+    const detectedExamType = detectExamType(fullText);
+    const detectedPhase = detectPhase(fullText);
+
+    // ----- Gabarito embutido no próprio PDF (algumas provas imprimem ao
+    // fim): só aplicado quando >= 5 pares N+letra (sanidade) e sempre
+    // marcado como "in_document" (confirmação na revisão).
+    let stagedWithKey: StagedQ[] = staged;
+    if (staged.length > 0) {
+      const inDocKey = parseAnswerKey(fullText);
+      if (inDocKey.answers.size >= 5) {
+        // Letra direto do mapa parseado; validamos contra as alternativas
+        // da questão para não gravar letra inexistente.
+        stagedWithKey = staged.map((q) => {
+          const letter = inDocKey.answers.get(q.number);
+          const valid =
+            letter !== undefined &&
+            q.alternatives.some(
+              (a) => a.letter.toUpperCase() === letter.toUpperCase(),
+            );
+          return valid && letter
+            ? {
+                ...q,
+                correctLetter: letter,
+                keySource: "in_document" as const,
+                reviewReasons: [
+                  ...q.reviewReasons,
+                  "gabarito extraído do próprio PDF — confirme na revisão",
+                ],
+              }
+            : q;
+        });
+      }
+    }
+    const stagedFinal: StagedQ[] = stagedWithKey.map((q) => ({
+      ...q,
+      difficulty: estimateDifficulty({
+        statement: q.statement,
+        alternatives: q.alternatives,
+      }),
+    }));
 
     const ready = staged.filter((q) => !q.needsReview).length;
     const fit = assessFit(
@@ -376,7 +452,9 @@ export const analyze = action({
       ready,
       duplicateInDb,
       duplicateInFile,
-      questions: fit.outcome === "accepted" ? staged : undefined,
+      detectedExamType,
+      detectedPhase,
+      questions: fit.outcome === "accepted" ? stagedFinal : undefined,
     });
 
     if (fit.outcome === "rejected") {
@@ -469,10 +547,9 @@ export const publishQuestion = mutation({
     topicId: v.optional(v.id("taxonomyNodes")),
     examId: v.optional(v.id("exams")),
     editionId: v.optional(v.id("examEditions")),
-    difficulty: v.union(
-      v.literal("easy"),
-      v.literal("medium"),
-      v.literal("hard"),
+    /** Opcional: cai no valor estimado pela identificação automática. */
+    difficulty: v.optional(
+      v.union(v.literal("easy"), v.literal("medium"), v.literal("hard")),
     ),
   },
   handler: async (
@@ -539,12 +616,33 @@ export const publishQuestion = mutation({
       editionId: edition,
       sourceRef: `Q${item.number}`,
       sourceOrder: item.number,
-      difficulty,
+      difficulty:
+        difficulty ??
+        (item.difficulty ?? "medium") as "easy" | "medium" | "hard",
       questionType: "multiple_choice",
       sourceId: `pdfcontrib:${contributionId}:q${item.number}`,
       status: "review",
       contentHash: item.contentHash,
+      keySource: item.keySource ?? "provisional",
     });
+
+    // Sem gabarito oficial? Enfila a busca automática (aplicável depois).
+    if ((item.keySource ?? "provisional") !== "official") {
+      try {
+        await ensureSearchForHash(ctx, {
+          contentHash: item.contentHash,
+          questionNumber: item.number,
+          examName: doc.examName ?? doc.institution,
+          institution: doc.institution,
+          year: doc.year,
+          phase: doc.detectedPhase ?? doc.phase,
+          contributionId,
+          appliedQuestionId: questionId,
+        });
+      } catch {
+        // Fila é melhor-esforço; a questão publicada segue revisável.
+      }
+    }
 
     await ctx.db.patch(contributionId, {
       parsedQuestions: parsed.map((q, i) =>

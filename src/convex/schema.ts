@@ -132,6 +132,20 @@ export const questions = defineTable({
   /** Hash para detecção de duplicatas (índice by_content_hash; import e
    *  criação manual consultam antes de gravar) */
   contentHash: v.optional(v.string()),
+  /**
+   * Proveniência do gabarito: de onde veio a letra correta.
+   * "official" = gabarito oficial aplicado (PDF próprio, busca confirmada);
+   * "in_document" = extraído do corpo do PDF, aguarda confirmação;
+   * "provisional" = atribuição manual provisória, substituível.
+   * Ausente = fluxo antigo/CSV (sem rastreio) — não é um erro.
+   */
+  keySource: v.optional(
+    v.union(
+      v.literal("official"),
+      v.literal("in_document"),
+      v.literal("provisional"),
+    ),
+  ),
   videoId: v.optional(v.id("videos")),
 }).index("by_status", ["status"])
   .index("by_exam", ["examId", "status"])
@@ -291,11 +305,22 @@ export const examContributions = defineTable({
   storageId: v.id("_storage"),
   contentType: v.string(),
 
-  /** Metadados informados pelo usuário (todos opcionais, exceto declaro). */
+  /** Metadados informados pelo usuário (todos opcionais). */
   institution: v.optional(v.string()),
   examName: v.optional(v.string()),
   year: v.optional(v.number()),
   phase: v.optional(v.string()),
+
+  /** IDENTIFICAÇÃO AUTOMÁTICA (lib/examProfile.ts, a partir do texto). */
+  detectedExamType: v.optional(
+    v.union(
+      v.literal("vestibular"),
+      v.literal("enem"),
+      v.literal("concurso"),
+      v.literal("certification"),
+    ),
+  ),
+  detectedPhase: v.optional(v.string()),
   /** URL oficial da fonte (rastreio do direito de uso). */
   sourceUrl: v.optional(v.string()),
   /** Declaração do usuário: “sou o autor ou tenho direito de uso”. */
@@ -361,6 +386,18 @@ export const examContributions = defineTable({
         duplicateInDb: v.optional(v.boolean()),
         duplicateInFile: v.optional(v.boolean()),
         createdQuestionId: v.optional(v.id("questions")),
+        /** Dificuldade ESTIMADA automaticamente (admin pode mudar). */
+        difficulty: v.optional(
+          v.union(v.literal("easy"), v.literal("medium"), v.literal("hard")),
+        ),
+        /** Proveniência da letra correta deste estágio. */
+        keySource: v.optional(
+          v.union(
+            v.literal("in_document"),
+            v.literal("provisional"),
+            v.literal("official"),
+          ),
+        ),
       }),
     ),
   ),
@@ -369,6 +406,50 @@ export const examContributions = defineTable({
   processedAt: v.optional(v.number()),
 })
   .index("by_user", ["userId"])
+  .index("by_status", ["status"])
+  .index("by_created", ["createdAt"]);
+
+/**
+ * FILA DE BUSCA POR GABARITO OFICIAL.
+ * Cada registro = uma questão (identificada por contentHash + contexto)
+ * cuja letra correta ainda não é oficial. O search action usa a API Exa
+ * (env EXA_API_KEY), extrai candidatos de snippets e o admin aprova.
+ */
+export const answerKeySearches = defineTable({
+  /** Dedupe e associação ao estágio/questão publicada. */
+  contentHash: v.string(),
+  contributionId: v.optional(v.id("examContributions")),
+  questionNumber: v.number(),
+  examName: v.optional(v.string()),
+  institution: v.optional(v.string()),
+  year: v.optional(v.number()),
+  phase: v.optional(v.string()),
+
+  /** Consulta congelada (determinística, lib/examProfile.ts). */
+  searchQuery: v.string(),
+  status: v.union(
+    v.literal("queued"),
+    v.literal("searched"),
+    v.literal("not_found"),
+    v.literal("applied"),
+    v.literal("failed"),
+  ),
+  /** Candidatos extraídos de snippets; NUNCA aplicados sem aprovação. */
+  candidates: v.array(
+    v.object({
+      letter: v.string(),
+      title: v.optional(v.string()),
+      sourceUrl: v.string(),
+      snippet: v.string(),
+      foundAt: v.number(),
+    }),
+  ),
+  errorMessage: v.optional(v.string()),
+  appliedQuestionId: v.optional(v.id("questions")),
+  createdAt: v.number(),
+  searchedAt: v.optional(v.number()),
+})
+  .index("by_hash", ["contentHash"])
   .index("by_status", ["status"])
   .index("by_created", ["createdAt"]);
 
@@ -593,6 +674,7 @@ const schema = defineSchema(
     importBatches,
     examPdfs,
     examContributions,
+    answerKeySearches,
     videos,
     studySessions,
     studySessionQuestions,

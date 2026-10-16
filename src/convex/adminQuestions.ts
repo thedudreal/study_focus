@@ -87,6 +87,8 @@ export async function writeQuestionWithOptions(
     status: "draft" | "review" | "published" | "archived";
     importBatchId?: Id<"importBatches">;
     contentHash?: string;
+    /** Proveniência do gabarito (lib de contribuições/provas). */
+    keySource?: "official" | "provisional" | "in_document";
   },
 ): Promise<Id<"questions">> {
   const correctIdx = data.alternatives.findIndex(
@@ -117,6 +119,7 @@ export async function writeQuestionWithOptions(
     status: data.status,
     importBatchId: data.importBatchId,
     contentHash: data.contentHash,
+    keySource: data.keySource,
   };
 
   let finalId: Id<"questions">;

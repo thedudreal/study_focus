@@ -15,7 +15,9 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  KeyRound,
   Loader2,
+  Search,
   Send,
   Stamp,
   ShieldCheck,
@@ -262,6 +264,8 @@ function StagePublishList({
   const taxonomy = useQuery(api.taxonomy.treeWithCounts, {});
   const exams = useQuery(api.exams.listExams, {});
   const publishMutation = useMutation(api.examContributions.publishQuestion);
+  const setProvisionalKey = useMutation(api.answerKeys.setProvisionalKey);
+  const createSearch = useMutation(api.answerKeys.createSearch);
   const [selectedSubject, setSelectedSubject] = useState("");
   const [selectedTopic, setSelectedTopic] = useState("");
   const [selectedExam, setSelectedExam] = useState("");
@@ -385,6 +389,66 @@ function StagePublishList({
                 {q.reviewReasons.length > 0 && (
                   <p className="text-xs text-chart-4">{q.reviewReasons.join(" · ")}</p>
                 )}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="chip font-mono-tech text-xs">
+                    dificuldade {q.difficulty ?? "—"}
+                  </span>
+                  <span className="chip font-mono-tech text-xs">
+                    gabarito {q.correctLetter ?? "—"}
+                  </span>
+                  {q.keySource === "official" && (
+                    <span className="chip font-mono-tech text-xs border-chart-3/50 text-chart-3">
+                      oficial
+                    </span>
+                  )}
+                  {q.keySource === "in_document" && (
+                    <span className="chip font-mono-tech text-xs border-chart-4/50 text-chart-4">
+                      do próprio PDF
+                    </span>
+                  )}
+                  {q.keySource === "provisional" && (
+                    <span className="chip font-mono-tech text-xs bg-muted">
+                      provisória
+                    </span>
+                  )}
+                  {q.correctLetter === undefined && !q.createdQuestionId && (
+                    <ProvisionalKeyControls
+                      contributionId={doc._id}
+                      questionIndex={i}
+                      alternatives={q.alternatives}
+                      onSetProvisionalKey={setProvisionalKey}
+                    />
+                  )}
+                  {!q.createdQuestionId && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={async () => {
+                        try {
+                          await createSearch({
+                            contentHash: q.contentHash,
+                            questionNumber: q.number,
+                            examName: doc.examName,
+                            institution: doc.institution,
+                            year: doc.analysis?.year ?? doc.year,
+                            phase: doc.detectedPhase ?? doc.phase,
+                            contributionId: doc._id,
+                          });
+                          toast.success(
+                            "Fila de busca por gabarito oficial — acompanhe na aba Gabaritos.",
+                          );
+                        } catch (err) {
+                          toast.error(
+                            err instanceof Error ? err.message : "Falha na fila.",
+                          );
+                        }
+                      }}
+                    >
+                      <Search className="size-3.5" />
+                      Buscar gabarito oficial
+                    </Button>
+                  )}
+                </div>
                 {!q.createdQuestionId && (
                   <Button
                     size="sm"
@@ -413,6 +477,70 @@ function StagePublishList({
           Licença pendente/negada — publique somente após autorizar o direito de uso.
         </p>
       )}
+    </div>
+  );
+}
+
+/** Atribui letra provisória (substituída quando a oficial chegar). */
+function ProvisionalKeyControls({
+  contributionId,
+  questionIndex,
+  alternatives,
+  onSetProvisionalKey,
+}: {
+  contributionId: Id<"examContributions">;
+  questionIndex: number;
+  alternatives: { letter: string; text: string }[];
+  onSetProvisionalKey: ReturnType<
+    typeof useMutation<typeof api.answerKeys.setProvisionalKey>
+  >;
+}) {
+  const [letter, setLetter] = useState("");
+  const [setting, setSetting] = useState(false);
+  return (
+    <div className="flex items-center gap-2">
+      <KeyRound className="size-3.5 text-muted-foreground" />
+      <Select
+        value={letter}
+        onValueChange={setLetter}
+        disabled={setting}
+      >
+        <SelectTrigger className="h-8 w-24">
+          <SelectValue placeholder="letra…" />
+        </SelectTrigger>
+        <SelectContent>
+          {alternatives.map((a) => (
+            <SelectItem key={a.letter} value={a.letter.toUpperCase()}>
+              {a.letter.toUpperCase()}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={!letter || setting}
+        onClick={async () => {
+          setSetting(true);
+          try {
+            await onSetProvisionalKey({
+              contributionId,
+              questionIndex,
+              letter,
+            });
+            toast.success(
+              "Gabarito provisório registrado — a busca oficial substituirá quando confirmado.",
+            );
+          } catch (err) {
+            toast.error(err instanceof Error ? err.message : "Falha.");
+          } finally {
+            setSetting(false);
+          }
+        }}
+      >
+        {setting ? <Loader2 className="size-3.5 animate-spin" /> : null}
+        provisória
+      </Button>
     </div>
   );
 }
