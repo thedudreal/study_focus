@@ -67,6 +67,94 @@ export default function AdminExamImport() {
   const [licenseStatus, setLicenseStatus] = useState<"pending" | "authorized">("pending");
   const [uploading, setUploading] = useState<Kind | null>(null);
   const [extracting, setExtracting] = useState(false);
+  // Lote estável do fluxo detalhado: caderno e gabarito do MESMO lote são
+  // associados automaticamente na extração. "Novo lote" reseta.
+  const [batchId, setBatchId] = useState(uid);
+  const [quickLoading, setQuickLoading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const quickInput = useRef<HTMLInputElement>(null);
+
+  /**
+   * UPLOAD DIRETO: solte (ou escolha) vários PDFs de cadernos — cada um
+   * vira um lote próprio, é extraído automaticamente e aparece na lista
+   * abaixo com status. Metadados ficam opcionais; nada é publicado sem
+   * revisão (a licença entra como pendente e bloqueia publicação).
+   */
+  const quickUpload = async (files: File[]) => {
+    const pdfs = files.filter(
+      (f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"),
+    );
+    if (pdfs.length === 0) {
+      toast.error("Apenas arquivos PDF são aceitos.");
+      return;
+    }
+    if (pdfs.length < files.length) {
+      toast.info(`${files.length - pdfs.length} arquivo(s) ignorado(s) — não são PDF.`);
+    }
+    let ok = 0;
+    let questionsFound = 0;
+    let failed = 0;
+    setQuickLoading(true);
+    try {
+      for (const file of pdfs) {
+        if (file.size > MAX_PDF_BYTES) {
+          toast.error(`${file.name}: maior que 20 MB — ignorado.`);
+          failed += 1;
+          continue;
+        }
+        try {
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          const fingerprint = await sha1Hex(bytes);
+          const url = await generateUploadUrl({});
+          const res = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/pdf" },
+            body: file,
+          });
+          const { storageId } = (await res.json()) as { storageId: Id<"_storage"> };
+          const result = await registerUpload({
+            batchId: uid(),
+            kind: "exam_paper",
+            storageId,
+            filename: file.name,
+            contentType: file.type || "application/pdf",
+            fileSize: file.size,
+            licenseStatus: "pending",
+            fileFingerprint: fingerprint,
+          });
+          if (result.duplicate) {
+            toast.info(`${file.name}: já enviado antes — reutilizado.`);
+          } else {
+            ok += 1;
+            try {
+              const summary = await extract({ examPdfId: result.examPdfId });
+              questionsFound += summary.found;
+              toast.success(
+                `${file.name}: ${summary.found} questão(ões) identificada(s).`,
+              );
+            } catch (err) {
+              failed += 1;
+              toast.error(
+                `${file.name}: ${err instanceof Error ? err.message : "falha na extração."}`,
+              );
+            }
+          }
+        } catch (err) {
+          failed += 1;
+          toast.error(
+            `${file.name}: ${err instanceof Error ? err.message : "falha no envio."}`,
+          );
+        }
+      }
+      if (ok > 0) {
+        toast.info(
+          `${ok} caderno(s) processado(s) · ${questionsFound} questão(ões) no total${failed ? ` · ${failed} com pendência` : ""}. Revise na lista abaixo.`,
+        );
+      }
+    } finally {
+      setQuickLoading(false);
+    }
+  };
 
   const uploadOne = async (kind: Kind, file: File) => {
     if (file.type !== "application/pdf") {
@@ -91,7 +179,7 @@ export default function AdminExamImport() {
       const { storageId } = (await res.json()) as { storageId: Id<"_storage"> };
 
       const result = await registerUpload({
-        batchId: uid(),
+        batchId,
         kind,
         storageId,
         filename: file.name,
@@ -158,9 +246,69 @@ export default function AdminExamImport() {
         </p>
       </div>
 
-      {/* Passo 1: metadados */}
+      {/* UPLOAD DIRETO: arraste cadernos agora, sem formulário antes */}
+      <section className="panel space-y-3 p-6">
+        <p className="eyebrow text-muted-foreground">upload direto · comece enviando os cadernos</p>
+        <div
+          role="button"
+          tabIndex={0}
+          className={`cursor-pointer rounded-xl border-2 border-dashed p-10 text-center transition-colors ${
+            dragOver ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
+          }`}
+          onClick={() => quickInput.current?.click()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") quickInput.current?.click();
+          }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOver(true);
+          }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            void quickUpload(Array.from(e.dataTransfer.files));
+          }}
+        >
+          {quickLoading ? (
+            <Loader2 className="mx-auto size-10 animate-spin text-primary" aria-hidden />
+          ) : (
+            <Upload className="mx-auto size-10 text-primary" aria-hidden />
+          )}
+          <p className="mt-3 font-semibold">
+            {quickLoading
+              ? "Processando… enviando e extraindo questões"
+              : "Arraste os PDFs dos cadernos aqui (vários de uma vez)"}
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            ou clique para escolher · máx. 20 MB por PDF · envia e extrai
+            questões automaticamente
+          </p>
+        </div>
+        <input
+          ref={quickInput}
+          type="file"
+          accept="application/pdf"
+          multiple
+          className="sr-only"
+          onChange={(e) => {
+            const files = Array.from(e.target.files ?? []);
+            e.target.value = "";
+            if (files.length) void quickUpload(files);
+          }}
+        />
+        <p className="text-xs text-muted-foreground">
+          Nada entra no banco sem revisão — cada caderno aparece na lista
+          abaixo com status; metadados podem ser informados no fluxo
+          detalhado, que também aceita gabarito oficial.
+        </p>
+      </section>
+
+      {/* Passo 1: metadados (fluxo detalhado) */}
       <section className="panel space-y-4 p-6">
-        <p className="eyebrow text-muted-foreground">passo 1 · informações da prova</p>
+        <p className="eyebrow text-muted-foreground">
+          fluxo detalhado · passo 1 · informações da prova (opcional)
+        </p>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
             <Label>Instituição (ex.: USP)</Label>
@@ -213,9 +361,22 @@ export default function AdminExamImport() {
         </div>
       </section>
 
-      {/* Passo 2: uploads */}
+      {/* Passo 2: uploads pareados (caderno + gabarito no mesmo lote) */}
       <section className="panel space-y-4 p-6">
-        <p className="eyebrow text-muted-foreground">passo 2 · arquivos (PDF, máx. 20 MB)</p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="eyebrow text-muted-foreground">
+            fluxo detalhado · passo 2 · arquivos (PDF, máx. 20 MB)
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={uploading !== null || quickLoading}
+            onClick={() => setBatchId(uid())}
+          >
+            <RefreshCw className="size-3.5" />
+            Novo lote
+          </Button>
+        </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="rounded-lg border border-dashed border-border p-5 text-center">
             <FileText className="mx-auto size-8 text-primary" aria-hidden />
@@ -272,14 +433,15 @@ export default function AdminExamImport() {
           </div>
         </div>
         <p className="text-xs text-muted-foreground">
-          Cada envio cria um lote próprio; caderno e gabarito devem ser enviados
-          com os mesmos metadados para serem associados.
+          Caderno e gabarito enviados nesta sessão compartilham o mesmo lote e
+          são associados automaticamente na extração. Use “Novo lote” para
+          começar outra prova.
         </p>
       </section>
 
       {/* Passo 3: lista de recibos/lotes */}
       <section className="panel space-y-4 p-6">
-        <p className="eyebrow text-muted-foreground">passo 3 · arquivos e status</p>
+        <p className="eyebrow text-muted-foreground">fluxo detalhado · passo 3 · arquivos e status</p>
         {(history ?? []).length === 0 ? (
           <p className="text-sm text-muted-foreground">
             Nenhum PDF enviado ainda.
